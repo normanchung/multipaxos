@@ -12,8 +12,8 @@ def connect():
 	server1.connect((socket.gethostname(), data["1"]))
 	server2.connect((socket.gethostname(), data["2"]))
 	server3.connect((socket.gethostname(), data["3"]))
-	#server4.connect((socket.gethostname(), data["4"]))
-	#server5.connect((socket.gethostname(), data["5"]))
+	server4.connect((socket.gethostname(), data["4"]))
+	server5.connect((socket.gethostname(), data["5"]))
 	print("connected to servers!")
 
 def cmd_input():
@@ -30,6 +30,7 @@ def cmd_input():
 				which_server = inp[5:12]
 				message = inp[13:]
 				print("sending message: " + message + ", from client " + str(process_id) + " to " + which_server)
+				message = "client" + str(process_id) + " " + message
 				message = message.encode()
 				time.sleep(5)
 				if (which_server == 'server1'):
@@ -67,6 +68,4 @@ server3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server5 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-#client1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#client2 = socket.socket(socket.AF_INET,	socket.SOCK_STREAM)
 threading.Thread(target=cmd_input).start()
