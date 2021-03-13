@@ -6,6 +6,9 @@ import sys
 import threading
 import time
 import queue
+import random
+import string
+import hashlib
 
 
 def connect():
@@ -40,35 +43,41 @@ def connect():
         server3.connect((socket.gethostname(), data["3"]))
         server4.connect((socket.gethostname(), data["4"]))
 
+    active_networks[server1] = True
+    active_networks[server2] = True
+    active_networks[server3] = True
+    active_networks[server4] = True
+
     print("connected to servers!")
 
-
-def send_between_servers():
+def get_correct_server(dest_server):
     #given the process_id of the current server, you can determine which server to send to by comparing process_id
     #if current process_id is 3, and destination is 2, you would do a server2 send
     #if current process_id is 3, and destination is 4, you would do a server3 send (subtract 1)
-    '''
-    if (which_server[-1] < str(process_id)):
-        if (which_server == 'server1'):
-        	server1.sendall(message)
-        elif (which_server == 'server2'):
-        	server2.sendall(message)
-        elif (which_server == 'server3'):
-        	server3.sendall(message)
-        elif (which_server == 'server4'):
-        	server4.sendall(message)
-        elif (which_server == 'server5'):
-        	server5.sendall(message)
-    elif (which_server[-1] > str(process_id)):
-        if (which_server == 'server2'):
-        	server1.sendall(message)
-        elif (which_server == 'server3'):
-        	server2.sendall(message)
-        elif (which_server == 'server4'):
-        	server3.sendall(message)
-        elif (which_server == 'server5'):
-        	server4.sendall(message)
-    '''
+    if (dest_server[-1] < str(process_id)):
+        if (dest_server == 'server1'):
+            return server1
+        elif (dest_server == 'server2'):
+            return server2
+        elif (dest_server == 'server3'):
+            return server3
+        elif (dest_server == 'server4'):
+            return server4
+        elif (dest_server == 'server5'):
+            return server5
+    elif (dest_server[-1] > str(process_id)):
+        if (dest_server == 'server2'):
+            return server1
+        elif (dest_server == 'server3'):
+            return server2
+        elif (dest_server == 'server4'):
+            return server3
+        elif (dest_server == 'server5'):
+            return server4
+
+def send_between_servers(dest_server, msg):
+    server = get_correct_server(dest_server)
+    server.sendall(message)
     pass
 
 def cmd_input():
@@ -95,23 +104,39 @@ def cmd_input():
 
             #if input is send, send from one server to another
             elif inp[0:4] == 'send':
-                which_server = inp[5:12]
+                dest_server = inp[5:12]
                 message = inp[13:]
-                print("sending message: " + message + ", from client " + str(process_id) + " to " + which_server)
+                print("sending message: " + message + ", from client " + str(process_id) + " to " + dest_server)
                 message = "client" + str(process_id) + " " + message
                 message = message.encode()
                 time.sleep(5)
-                send_between_servers()
+                send_between_servers(dest_server, message)
 
-            #if input is exit, close everything
-            elif inp == 'exit':
-                print("closing all connections...")
-                self_socket.close()
-                server1.close()
-                server2.close()
-                server3.close()
-                server4.close()
-                os._exit(0)
+            elif inp == 'print blockchain':
+                print_blockchain()
+
+            elif inp == 'print kvstore':
+                print_kv_store()
+
+            elif inp == 'print queue':
+                print_queue()
+
+            #this one isn't necessary for project but this is here to help us if we need to debug
+            elif inp == 'print active networks':
+                print_active_networks()
+
+            elif inp[:9] == 'fail link':
+                server = get_correct_server(inp[10:])
+                failLink(server)
+
+            elif inp[:8] == 'fix link':
+                server = get_correct_server(inp[9:])
+                fixLink(server)
+
+            #if input is fail process, close everything
+            elif inp == 'fail process':
+                failProcess()
+
         except EOFError:
             pass
 
@@ -127,6 +152,165 @@ def server_listen(stream, addr):
         #send received message from client
         print("message: " + message + ", received from " + sender)
 
+#generate hashes and nonces for each block
+def generateBlockchain():
+    letters = string.ascii_letters
+    for i in range(len(blockchain)):
+        current_hash = ""
+        if i != 0:
+            previous_operation = blockchain[i-1][0][0]
+            previous_hash = blockchain[i-1][1]
+            previous_nonce = blockchain[i-1][2]
+            operation_nonce_hash = (previous_operation+previous_nonce+previous_hash).encode()
+            current_hash = hashlib.sha256(operation_nonce_hash).hexdigest()
+
+        h = ""
+        current_operation = blockchain[i][0][0]
+        while len(h) == 0 or (h[len(h)-1] != '0' and h[len(h)-1] != '2'):
+            nonce = ''.join(random.choice(letters) for i in range(6))
+            operation_nonce = (current_operation+nonce).encode()
+            h = hashlib.sha256(operation_nonce).hexdigest()
+
+        print("\n")
+        print("hash for previous ptr in blockchain: ", current_hash)
+        print("nonce: ", nonce)
+        print("hashes generated with nonce that should end in 0 or 2: ", h)
+        
+        blockchain[i][1] = current_hash
+        blockchain[i][2] = nonce
+        
+
+def write_blockchain_to_file(filename):
+    f = open(filename, "w")
+    for i in range(len(blockchain)):
+        f.write("operation:" + blockchain[i][0][0]+"\n")
+        f.write("key:" + blockchain[i][0][1]+"\n")
+        if len(blockchain[i][0]) > 2:
+            for key, value in blockchain[i][0][2].items():
+                f.write("value_k:" + key +"\n")
+                f.write("value_v:" + value +"\n")
+        f.write("hash:" + blockchain[i][1]+"\n")
+        f.write("nonce:" + blockchain[i][2]+"\n")
+    f.close()
+
+def read_blockchain_from_file(filename):
+    global blockchain
+    blockchain = []
+    f = open(filename, "r")
+    while True:
+        block = [[], "", ""]
+        line = f.readline().rstrip('\n')
+        if not line:
+            break
+        if line[:line.find(':')] != "operation":
+            print("error with parsing operation")
+        block[0].append(line[line.find(':')+1:])
+
+        line = f.readline().rstrip('\n')
+        if not line:
+            break
+        if line[:line.find(':')] != "key":
+            print("error with parsing key")
+        block[0].append(line[line.find(':')+1:])
+
+        l = f.tell()
+        line = f.readline().rstrip('\n')
+        if not line:
+            break
+        if line[:line.find(':')] != "value_k":
+            f.seek(l)
+        else:
+            key = line[line.find(':')+1:]
+            value = ""
+            line = f.readline().rstrip('\n')
+            if not line:
+                break
+            if line[:line.find(':')] == "value_v":
+                value = line[line.find(':')+1:]
+            kv = {key : value}
+            block[0].append(kv)
+
+        line = f.readline().rstrip('\n')
+        if not line:
+            break
+        if line[:line.find(':')] != "hash":
+            print("error with parsing hash")
+        block[1] = line[line.find(':')+1:]
+
+        line = f.readline().rstrip('\n')
+        if not line:
+            break
+        if line[:line.find(':')] != "nonce":
+            print("error with parsing nonce")
+        block[2] = line[line.find(':')+1:]
+        blockchain.append(block)
+        
+def generate_kv_store():
+    global kvStore
+    for i in range(len(blockchain)):
+        val = {}
+        if blockchain[i][0][0] == "put":
+            for key, value in blockchain[i][0][2].items():
+                val[key] = value
+            kvStore[blockchain[i][0][1]] = val
+
+def recover_data():
+    read_blockchain_from_file()
+    generate_kv_store()
+
+def print_blockchain():
+    for i in range(len(blockchain)):
+        print(blockchain[i])
+
+def print_kv_store():
+    print(kvStore)
+
+def print_queue():
+    print(list(q.queue))
+
+def print_active_networks():
+    print(active_networks)
+
+def failLink(dest_sock):
+    if dest_sock in active_networks:
+        active_networks[dest_sock] = False
+        return
+    print("failLink() error: no connection found")
+
+def fixLink(dest_sock):
+    if dest_sock in active_networks:
+        active_networks[dest_sock] = True
+        return
+    print("fixLink() error: no connection found")
+
+def failProcess():
+    print("closing all connections...")
+    self_socket.close()
+    server1.close()
+    server2.close()
+    server3.close()
+    server4.close()
+
+    #store blockchain data into file
+    filename = "data_server"+str(process_id)+".txt"
+    write_blockchain_to_file(filename)
+
+    os._exit(0)
+
+#initialize blockchain with operation and <k,v> but no hash or nonce
+'''blockchain =  [
+                [["get", "a_netid"], "", ""],
+                [["put", "a_netid", {"phone_number":"111-222-3333"}], "", ""],
+                [["put", "bob_netid", {"phone_number":"333-222-1111"}], "", ""],
+                [["get", "bob_netid"], "", ""],
+                [["get", "cat_netid"], "", ""]
+                ]'''
+
+blockchain = []
+kvStore = {}
+q = queue.Queue()
+active_networks = {}
+
 
 process_id = int(sys.argv[1])
 
@@ -134,13 +318,10 @@ file = open('config.json')
 data = json.load(file)
 PORT = data[str(process_id)]
 
-q = queue.Queue()
-q.put(["get", "a_id"])
-key_value = {"key":"value"}
-blockchain =    [
-                [["get", "a_id"], "hash", "nonce"],
-                [["put", "a_id", {"phone_number":"111-222-3333"}], "hash", "nonce"]
-                ]
+#initialize blockchain from written file if there's data in it
+filename = "data_server"+str(process_id)+".txt"
+if os.path.exists(filename) and os.stat(filename).st_size > 0:
+    read_blockchain_from_file(filename)
 
 self_socket = socket.socket()
 self_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
