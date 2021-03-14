@@ -75,7 +75,7 @@ def get_correct_server(dest_server):
         elif (dest_server == 'server5'):
             return server4
 
-def send_between_servers(dest_server, msg):
+def send_between_servers(dest_server, message):
     server = get_correct_server(dest_server)
     server.sendall(message)
     pass
@@ -140,6 +140,141 @@ def cmd_input():
         except EOFError:
             pass
 
+def send_proposal(operation):
+    global current_index
+    global current_num
+    
+    current_num += 1
+    message = "prepare," + str(current_index) + "," + str(current_num) + "," + str(process_id) + "," + operation #more things to add here for local comparison?
+    message = message.encode()
+    #broadcast message to all servers
+    time.sleep(5)
+    server1.sendall(message)
+    server2.sendall(message)
+    server3.sendall(message)
+    server4.sendall(message)
+
+def receive_proposal(received_index, received_num, pid, operation):
+    global current_index
+    global current_num
+    global current_pid
+    #check if the values are less than current values for rejection
+    #otherwise accept and send promise
+    #index aka current_index of blockchain, num aka ballot num of current paxos iteration, pid of leader
+    old_index = current_index
+    old_num = current_num
+    old_pid = current_pid
+    check_ballot_no(received_index, received_num, pid)
+    send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, operation)
+    
+def send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, operation):    
+    message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + str(accepted_block) + operation####change accepted_block if i can't send None type
+    ########change accepted_block to entire block TODO: change block to serialized string thing
+    message = message.encode() ################accept_num is a pair of the previously accepted ballot number and value(block)
+    #send to server that sent it to me
+    #maybe use get_correct_server to determine what server sent info and make that the leader variable
+    time.sleep(5)
+    leader.sendall(message)
+
+def receive_promise(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block, operation):
+    #need to check for majority through threads?
+    #check for if any other message was already accepted, and then start proposing this value
+    #Upon receive (“promise”, BallotNum, b, val) from majority
+    #if all vals = bottom then myVal = initial value
+    #else myVal = received val with highest b 
+
+    send_accept(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block, operation)
+
+def send_accept(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block, operation):
+    global current_index
+    global current_num
+    global current_pid
+    global accepted_block
+    
+    if (operation.split(',')[0] == "put"):
+        block_operation = "put"
+        key = operation.split(',')[1]
+        value = operation.split(',')[2]
+    elif (operation.split(',')[0] == "put"):
+        block_operation = "put"
+        key = operation.split(',')[1]
+        value = None
+
+    if(accepted_block == None):
+        current_index = received_index
+        current_num = received_num
+        current_pid = received_pid
+        generate_block(block_operation, key, value)
+        accepted_block = blockchain[-1]
+    else:
+        current_index = old_index
+        current_num = old_num
+        current_pid = old_pid
+        accepted_block = received_block
+
+    message = "accept," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(accepted_block)
+    message = message.encode()
+    time.sleep(5)
+    leader.sendall(message)
+
+def receive_accept(received_index, received_num, received_pid, received_block):
+    global current_index
+    global current_num
+    global current_pid
+    global accepted_block
+
+    #check for majority through threads
+    #check if received ballot number is greater than current
+    #if yes, change accept_num to received ballot_no, accept_block to my_block
+    
+    if (check_ballot_no(received_index, received_num, received_pid)):
+        accepted_block = received_block
+        send_accepted(current_index, current_num, current_pid, accepted_block)
+  
+def send_accepted(current_index, current_num, current_pid, accepted_block):
+    #once this is sent the values are locked and will be decided upon given a majority
+    #use a boolean so that future messages won't interrupt this process?
+    message = "accepted," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(accepted_block)
+    message = message.encode()
+    time.sleep(5)
+    leader.sendall(message)
+
+def receive_accepted(received_index, received_num, received_pid, received_block):
+    #check for majority THREADING, and what value was finally decided on
+    send_decision(received_index, received_num, received_pid, received_block)
+    
+def send_decision(final_index, final_num, final_pid, final_block):
+    #broadcast final decision value to all servers, add to blockchain
+    message = "decide," + str(final_index) + "," + str(final_num) + "," + str(final_pid) + "," + str(final_block)
+    message = message.encode()
+    #broadcast to all servers
+    time.sleep(5)
+    server1.sendall(message)
+    server2.sendall(message)
+    server3.sendall(message)
+    server4.sendall(message)
+
+def receive_decision(received_index, received_num, received_pid, received_block):
+    #TODO change block boolean to decided to true
+    pass
+  
+def check_ballot_no(index, num, pid): ############TODO: check if value is None
+    global current_index
+    global current_num
+    global current_pid
+    print("checking ballot number")
+    if index < current_index:
+        return False
+    elif num < current_num:
+        return False
+    elif pid < current_id:
+        return False
+    current_index = index
+    current_num = num
+    current_pid = pid
+    return True
+  
+
 def server_listen(stream, addr):
     while True:
         #listen for a request from other clients
@@ -148,7 +283,64 @@ def server_listen(stream, addr):
             break
         message = message.decode()
         sender = message[0:7]
-        message = message[8:]
+        #message = message[8:]
+        #potentially make message[0:7] the client or server number
+        if message[0:3] == "get":
+            #from clients
+            if not is_leader:
+                message = message.encode()
+                leader.sendall(message)
+            else:
+                #start proposal
+                send_proposal(message)
+        elif message[0:3] == "put":
+            #from clients
+            if not is_leader:
+                message = message.encode()
+                leader.sendall(message)
+            else:
+                #start proposal
+                send_proposal(message)
+        elif message[0:6] == "leader":
+            #from client
+            #start leader election as leader aka SEND proposal
+            send_proposal(message)
+        elif message[0:7] == "prepare":
+            #from leader
+            received_index = int(message.split(',')[1])
+            received_num = int(message.split(',')[2])
+            pid = int(message.split(',')[3])
+            operation = int(message.split(',')[4])
+            receive_proposal(received_index, received_num, pid, operation)
+        elif message[0:7] == "promise":
+            #from server
+            received_index = int(message.split(',')[1])
+            received_num = int(message.split(',')[2])
+            received_pid = int(message.split(',')[3])
+            old_index = int(message.split(',')[4])
+            old_num = int(message.split(',')[5])
+            old_pid = int(message.split(',')[6])
+            received_block = int(message.split(',')[7]) #TODO CHANGE ALL RECEIVED BLOCKS TO NOT CAST TO INT, BUT TO THE SERIALIZE THING
+            operation = int(message.split(',')[8])
+            receive_promise(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block, operation)
+        elif message[0:8] == "accepted":
+            #from server
+            received_index = int(message.split(',')[1])
+            received_num = int(message.split(',')[2])
+            received_pid = int(message.split(',')[3])
+            received_block = int(message.split(',')[4])
+            receive_accepted(received_index, received_num, received_pid, received_block)
+        elif message[0:6] == "accept":
+            #from leader
+            received_index = int(message.split(',')[1])
+            received_num = int(message.split(',')[2])
+            received_pid = int(message.split(',')[3])
+            received_block = int(message.split(',')[4])
+            receive_accept(received_index, received_num, received_pid, received_block)
+        elif message[0:6] == "decide":
+            #from leader
+            receive_decision(message)
+
         #send received message from client
         print("message: " + message + ", received from " + sender)
 
@@ -310,6 +502,15 @@ blockchain = []
 kvStore = {}
 q = queue.Queue()
 active_networks = {}
+is_leader = False
+leader = None
+
+#for ballot_no comparing
+current_index = 0 #depth
+current_num = 0 #ballot number
+current_pid = 0 #process id
+
+accepted_block = None #accepted block
 
 
 process_id = int(sys.argv[1])
