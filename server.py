@@ -345,31 +345,33 @@ def server_listen(stream, addr):
         print("message: " + message + ", received from " + sender)
 
 #generate hashes and nonces for each block
-def generateBlockchain():
+def generate_block(current_operation, key, value):
+    global blockchain
     letters = string.ascii_letters
-    for i in range(len(blockchain)):
-        current_hash = ""
-        if i != 0:
-            previous_operation = blockchain[i-1][0][0]
-            previous_hash = blockchain[i-1][1]
-            previous_nonce = blockchain[i-1][2]
-            operation_nonce_hash = (previous_operation+previous_nonce+previous_hash).encode()
-            current_hash = hashlib.sha256(operation_nonce_hash).hexdigest()
+    current_hash = ""
+    i = len(blockchain)
+    if i != 0:
+        previous_operation = blockchain[i-1][0][0]
+        previous_hash = blockchain[i-1][1]
+        previous_nonce = blockchain[i-1][2]
+        operation_nonce_hash = (previous_operation+previous_nonce+previous_hash).encode()
+        current_hash = hashlib.sha256(operation_nonce_hash).hexdigest()
 
-        h = ""
-        current_operation = blockchain[i][0][0]
-        while len(h) == 0 or (h[len(h)-1] != '0' and h[len(h)-1] != '2'):
-            nonce = ''.join(random.choice(letters) for i in range(6))
-            operation_nonce = (current_operation+nonce).encode()
-            h = hashlib.sha256(operation_nonce).hexdigest()
+    h = ""
+    while len(h) == 0 or (int(h[len(h)-1]) >= '0' and int(h[len(h)-1]) <= '2'):
+        nonce = ''.join(random.choice(letters) for i in range(6))
+        operation_nonce = (current_operation+nonce).encode()
+        h = hashlib.sha256(operation_nonce).hexdigest()
 
-        print("\n")
-        print("hash for previous ptr in blockchain: ", current_hash)
-        print("nonce: ", nonce)
-        print("hashes generated with nonce that should end in 0 or 2: ", h)
-        
-        blockchain[i][1] = current_hash
-        blockchain[i][2] = nonce
+    print("\n")
+    print("hash for previous ptr in blockchain: ", current_hash)
+    print("nonce: ", nonce)
+    print("hashes generated with nonce that should end in 0 to 2: ", h)
+
+    block_op = [current_operation, key]
+    if value is not None:
+        block_op.append(value)
+    blockchain.append([block_op, current_hash, nonce])
         
 
 def write_blockchain_to_file(filename):
@@ -488,6 +490,22 @@ def failProcess():
     write_blockchain_to_file(filename)
 
     os._exit(0)
+
+def check_ballot_no(index, num, pid):
+    global current_index
+    global current_num
+    global current_pid
+    print("checking ballot number")
+    if index < current_index:
+        return False
+    elif num < current_num:
+        return False
+    elif pid < current_id:
+        return False
+    current_index = index
+    current_num = num
+    current_pid = pid
+    return True
 
 #initialize blockchain with operation and <k,v> but no hash or nonce
 '''blockchain =  [
