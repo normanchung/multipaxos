@@ -267,7 +267,6 @@ def receive_accept(received_index, received_num, received_pid, received_block):
                 block_exists = True
         if not block_exists:
             blockchain.append(accepted_block) #TODO CHANGE THIS TO SEND TO GENERATE_BLOCK
-            
         send_accepted(current_index, current_num, current_pid, accepted_block)
   
 def send_accepted(current_index, current_num, current_pid, accepted_block):
@@ -374,6 +373,7 @@ def server_listen(stream, addr):
             #from client
             #start leader election as leader aka SEND proposal
             send_proposal()
+            threading.Thread(target=check_if_majority).start()
         elif message[0:7] == "prepare":
             #from leader
             received_index = int(message.split(',')[1])
@@ -577,6 +577,14 @@ def check_ballot_no(index, num, pid):
     current_pid = pid
     return True
 
+def check_if_majority():
+    time.sleep(30) #todo: change timeout time if needed
+    if received_counter >= 2:
+        #todo: continue with process
+        return True
+    #todo: stop the process
+    return False
+
 #initialize blockchain with operation and <k,v> but no hash or nonce
 '''blockchain =  [
                 ["unique id", ["get", "a_netid"], "previous block hash", "nonce", boolean(decided)],
@@ -590,6 +598,9 @@ blockchain = []
 kv_store = {}
 q = queue.Queue()
 active_networks = {}
+is_leader = False
+leader = None
+received_counter = 0
 
 #for ballot_no comparing
 current_index = 0 #depth
