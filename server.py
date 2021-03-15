@@ -43,10 +43,15 @@ def connect():
         server3.connect((socket.gethostname(), data["server3"]))
         server4.connect((socket.gethostname(), data["server4"]))
 
+    client1.connect((socket.gethostname(), data["client1"]))
+    #client2.connect((socket.gethostname(), data["client2"]))
+    #client3.connect((socket.gethostname(), data["client3"]))
+
     active_networks[server1] = True
     active_networks[server2] = True
     active_networks[server3] = True
     active_networks[server4] = True
+    #todo: check if i have to keep client connections in active_networks
 
     print("connected to servers!")
 
@@ -54,7 +59,7 @@ def get_correct_server(dest_server):
     #given the process_id of the current server, you can determine which server to send to by comparing process_id
     #if current process_id is 3, and destination is 2, you would do a server2 send
     #if current process_id is 3, and destination is 4, you would do a server3 send (subtract 1)
-    if (dest_server[-1] < str(process_id)):
+    if (dest_server < process_id):
         if (dest_server == 'server1'):
             return server1
         elif (dest_server == 'server2'):
@@ -65,7 +70,7 @@ def get_correct_server(dest_server):
             return server4
         elif (dest_server == 'server5'):
             return server5
-    elif (dest_server[-1] > str(process_id)):
+    elif (dest_server > process_id):
         if (dest_server == 'server2'):
             return server1
         elif (dest_server == 'server3'):
@@ -110,7 +115,7 @@ def cmd_input():
                 message = "client" + str(process_id) + " " + message
                 message = message.encode()
                 time.sleep(5)
-                send_between_servers(dest_server, message)
+                send_between_servers(int(dest_server[-1]), message)
 
             elif inp == 'print blockchain':
                 print_blockchain()
@@ -126,11 +131,11 @@ def cmd_input():
                 print_active_networks()
 
             elif inp[:9] == 'fail link':
-                server = get_correct_server(inp[10:])
+                server = get_correct_server(inp[len(inp)-1:])
                 failLink(server)
 
             elif inp[:8] == 'fix link':
-                server = get_correct_server(inp[9:])
+                server = get_correct_server(inp[len(inp)-1:])
                 fixLink(server)
 
             #if input is fail process, close everything
@@ -142,6 +147,7 @@ def cmd_input():
 
 ####TODO: add client to every function until decision as parameter
 def send_proposal():
+    print("server",str(process_id)," sending proposal")
     global current_num
     
     current_num += 1
@@ -155,6 +161,7 @@ def send_proposal():
     server4.sendall(message)
 
 def receive_proposal(received_index, received_num, proposer_pid):
+    print("server",str(process_id)," receiving proposal")
     #check if the values are less than current values for rejection
     #otherwise accept and send promise
     #index aka current_index of blockchain, num aka ballot num of current paxos iteration, pid of leader
@@ -162,10 +169,11 @@ def receive_proposal(received_index, received_num, proposer_pid):
     old_index = current_index
     old_num = current_num
     old_pid = current_pid
-    if(check_ballot_no(received_index, received_num, pid)):
+    if(check_ballot_no(received_index, received_num, proposer_pid)):
         send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, proposer_pid)
     
 def send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, proposer_pid):
+    print("server",str(process_id)," sending promise")
     global is_leader
     global leader
     global received_promise_counter
@@ -189,6 +197,7 @@ def send_promise(current_index, current_num, current_pid, old_index, old_num, ol
     leader.sendall(message)
 
 def receive_promise(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block):
+    print("server",str(process_id)," receiving promise")
     #check for if any other message was already accepted, and then start proposing this value
     #Upon receive (“promise”, BallotNum, b, val) from majority
     #if all vals = bottom then myVal = initial value
@@ -239,6 +248,7 @@ def receive_promise(received_index, received_num, received_pid, old_index, old_n
             send_accept()
 
 def send_accept():
+    print("server",str(process_id)," sending accept")
     global accepted_block
     global received_accepted_counter_dict
 
@@ -285,6 +295,7 @@ def send_accept():
     server4.sendall(message)
 
 def receive_accept(received_index, received_num, received_pid, received_block):
+    print("server",str(process_id)," receiving accept")
     global accepted_block
 
     #check for majority through threads
@@ -304,6 +315,7 @@ def receive_accept(received_index, received_num, received_pid, received_block):
         send_accepted(current_index, current_num, current_pid, accepted_block)
   
 def send_accepted(current_index, current_num, current_pid, accepted_block):
+    print("server",str(process_id)," sending accepted")
     #once this is sent the values are locked and will be decided upon given a majority
     #use a boolean so that future messages won't interrupt this process?
     global received_accepted_counter
@@ -318,6 +330,7 @@ def send_accepted(current_index, current_num, current_pid, accepted_block):
     leader.sendall(message)
 
 def receive_accepted(received_index, received_num, received_pid, received_block):
+    print("server",str(process_id)," receiving accepted")
     global received_accepted_counter
     global sent_decision
     global received_accepted_counter_dict
@@ -344,6 +357,7 @@ def receive_accepted(received_index, received_num, received_pid, received_block)
             send_decision(current_index, current_num, current_pid, accepted_block)
     
 def send_decision(final_index, final_num, final_pid, final_block):
+    print("server",str(process_id)," sending decision")
     #broadcast final decision value to all servers, add to blockchain
     message = "decide," + str(final_index) + "," + str(final_num) + "," + str(final_pid) + "," + str(final_block)
     message = message.encode()
@@ -357,12 +371,16 @@ def send_decision(final_index, final_num, final_pid, final_block):
     blockchain[-1][-1] = True #set last block to be "decided"
 
 def receive_decision(received_index, received_num, received_pid, received_block):
+    print("server",str(process_id)," receiving decision")
+    #todo: need to change this to find the block in blockchain instead of changing last block's decision to true
     if received_block == blockchain[-1]:
         blockchain[-1][-1] = True
         #todo: write blockchain to file?
     pass
 
 def send_message_to_client(client, block):
+    #todo: if get request key does not exist, send "NO_KEY"
+    print("server",str(process_id)," sending message to client", client)
     client_socket = get_client_socket(client)
     if block[0][0] == "put":
         message = "ack"
@@ -387,6 +405,7 @@ def get_client_socket(client):
         print("no correct client found for ", client)
   
 def check_ballot_no(index, num, pid): ############TODO: check if value is None
+    print("server",str(process_id)," checking ballot no")
     global current_index
     global current_num
     global current_pid
@@ -629,6 +648,9 @@ def check_ballot_no(index, num, pid):
     global current_num
     global current_pid
     print("checking ballot number")
+    if not current_index: #checks if current_index is None
+        return True
+
     if index < current_index:
         return False
     elif num < current_num:
@@ -691,8 +713,12 @@ server1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+client3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 if(process_id == 1):
+    print("setting is_leader to True")
     is_leader = True
 else:
     is_leader = False

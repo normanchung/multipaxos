@@ -11,11 +11,11 @@ import random
 
 def connect():
 	#setting up the connection from client to all servers
-	server1.connect((socket.gethostname(), data["1"]))
-	server2.connect((socket.gethostname(), data["2"]))
-	server3.connect((socket.gethostname(), data["3"]))
-	server4.connect((socket.gethostname(), data["4"]))
-	server5.connect((socket.gethostname(), data["5"]))
+	server1.connect((socket.gethostname(), data["server1"]))
+	server2.connect((socket.gethostname(), data["server2"]))
+	server3.connect((socket.gethostname(), data["server3"]))
+	server4.connect((socket.gethostname(), data["server4"]))
+	server5.connect((socket.gethostname(), data["server5"]))
 	print("connected to servers!")
 
 def cmd_input():
@@ -69,6 +69,31 @@ def cmd_input():
 		except EOFError:
 			pass
 
+def listen_on_port(stream, addr):
+	recv_msg_bytes = stream.recv(1024)
+	if not recv_msg_bytes:
+		return
+	response_received = True
+	recv_msg = recv_msg_bytes.decode()
+	if recv_msg == "NO_KEY":
+		print("no key in server's kv_store")
+		return
+	elif recv_msg == "ack":
+		print("successfully put data in server's kv_store")
+		return
+	elif recv_msg == "ok": #todo: change this to what's sent when new leader is determined
+		if (message_to_send[:message_to_send.find(',')] == "get"):
+			send_get_request(message)
+		elif (message_to_send[:message_to_send.find(',')] == "put"):
+			send_put_request(message)
+		else:
+			print("message_to_send is not a get or put request")
+		return
+	else:
+		value_dict = json.loads(recv_msg)
+		print("received dict from server: ", value_dict)
+		return
+
 def send_get_request(message):
 	global response_received
 	message = message.replace(' ', ',')
@@ -78,18 +103,6 @@ def send_get_request(message):
 	current_server.sendall(message_bytes)
 
 	threading.Thread(target=check_if_response).start()
-	recv_msg_bytes = client_socket.recv(1024)
-	if not recv_msg_bytes:
-		return
-	response_received = True
-	recv_msg = recv_msg_bytes.decode()
-	if recv_msg == "NO_KEY":
-		print("no key in server's kv_store")
-		return
-	else:
-		value_dict = json.loads(recv_msg)
-		print("received dict from server: ", value_dict)
-		return
 
 
 def send_put_request(message):
@@ -102,38 +115,15 @@ def send_put_request(message):
 	current_server.sendall(message_bytes)
 
 	threading.Thread(target=check_if_response).start()
-	recv_msg_bytes = client_socket.recv(1024)
-	if not recv_msg_bytes:
-		return
-	response_received = True
-	recv_msg = recv_msg_bytes.decode()
-	if recv_msg == "ack":
-		print("successfully put data in server's kv_store")
-		return
-	else:
-		print("unsuccessful put request")
 
 def send_leader_request():
 	global response_received
 	print("sending leader request")
-	message = "leader"
+	message = "client" + str(process_id) + ",leader"
 	message_bytes = message.encode()
 	current_server.sendall(message_bytes)
 
 	threading.Thread(target=check_if_response).start()
-	recv_msg_bytes = client_socket.recv(1024)
-	if not recv_msg_bytes:
-		return
-	response_received = True
-	recv_msg = recv_msg_bytes.decode()
-	if recv_msg == "ok": #todo: change this to what's sent when new leader is determined
-		if (message_to_send[:message_to_send.find(',')] == "get"):
-			send_get_request(message)
-		elif (message_to_send[:message_to_send.find(',')] == "put"):
-			send_put_request(message)
-		else:
-			print("message_to_send is not a get or put request")
-		return
 
 def switch_servers():
 	print("switching servers")
@@ -151,7 +141,7 @@ def switch_servers():
 
 def check_if_response():
 	global message_to_send
-	time.sleep(20) #todo: change timeout time if needed
+	time.sleep(40) #todo: change timeout time if needed
 	if not response_received:
 		handle_no_response()
 	else:
@@ -190,3 +180,8 @@ response_received = False
 message_to_send = ""
 
 threading.Thread(target=cmd_input).start()
+
+while True:
+	stream, addr = client_socket.accept()
+	t = threading.Thread(target=listen_on_port, args=(stream, addr))
+	t.start()
