@@ -5,6 +5,8 @@ import socket
 import sys
 import time
 import threading
+import string
+import random
 
 
 def connect():
