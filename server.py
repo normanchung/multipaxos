@@ -96,7 +96,7 @@ def cmd_input():
                 print("broadcasting message: " + message + ", from server " + str(process_id) + " to all servers")
                 message = "server" + str(process_id) + " " + message
                 message = message.encode()
-                time.sleep(5)
+                time.sleep(5) 
                 server1.sendall(message)
                 server2.sendall(message)
                 server3.sendall(message)
@@ -168,6 +168,13 @@ def receive_proposal(received_index, received_num, proposer_pid):
 def send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, proposer_pid):
     global is_leader
     global leader
+    global received_promise_counter
+    global received_promise_counter_dict
+    global sent_accept
+
+    received_promise_counter = 0
+    received_promise_counter_dict = []
+    sent_accept = False
     is_leader = False
     leader = get_correct_server(proposer_pid)
 
@@ -192,37 +199,55 @@ def receive_promise(received_index, received_num, received_pid, old_index, old_n
     global accepted_block
     global make_new_block
     global is_leader
+    global received_promise_counter
+    global received_promise_counter_dict
+    global block_ballot_no_dict
+    global sent_accept
 
-    #need to check for majority through threads?
+    if not sent_accept:
+        #todo: not sure if this takes care of if there's a majority acceptVal thing. check later
+        received_promise_counter = received_promise_counter + 1
 
-    is_leader = True
+        if received_block not in received_promise_counter_dict:
+            received_promise_counter_dict[received_block] = 1
+        else:
+            received_promise_counter_dict[received_block] = received_promise_counter_dict[received_block] + 1
 
-    if(accepted_block == None and not block_exists): #THIS BOOLEAN OF block_exists DOES NOT WORK
-        current_index = received_index
-        current_num = received_num
-        current_pid = received_pid
-        #generate_block(unique_id, block_operation, key, value)
-        #accepted_block = blockchain[-1]
-        make_new_block = True
-    else:
-        current_index = old_index
-        current_num = old_num
-        current_pid = old_pid
-        accepted_block = received_block
-        make_new_block = False
+        block_ballot_no_dict[received_block] = [old_index, old_num, old_pid]
 
-    #TODO: make this current server the leader variable
-    #TODO: send acknowledgement to client once majority is reached
-    send_accept()
+        for block in received_promise_counter_dict:
+            if received_promise_counter_dict[block] >= 2:
+                accepted_block = block
+
+        if(accepted_block == None): #THIS BOOLEAN OF block_exists DOES NOT WORK
+            #current_index = received_index
+            #current_num = received_num
+            #current_pid = received_pid
+            #generate_block(unique_id, block_operation, key, value)
+            #accepted_block = blockchain[-1]
+            make_new_block = True
+        else:
+            current_index = block_ballot_no_dict[accepted_block][0]
+            current_num = block_ballot_no_dict[accepted_block][1]
+            current_pid = block_ballot_no_dict[accepted_block][2]
+            make_new_block = False
+
+        #TODO: make this current server the leader variable
+        if (received_promise_counter >= 2):
+            is_leader = True
+            sent_accept = True
+            send_accept()
 
 def send_accept():
     global accepted_block
+    global received_accepted_counter_dict
 
-    block_exists = False
     block_operation = ""
     key = ""
     value = {}
     unique_id = ""
+    block_exists = False
+    received_accepted_counter_dict = []
 
     operation = q.get()
     if (operation.split(',')[0] == "put"):
@@ -243,12 +268,17 @@ def send_accept():
     if(make_new_block):
         generate_block(unique_id, block_operation, key, value)
         accepted_block = blockchain[-1]
+    elif not block_exists:
+        blockchain.append(accepted_block)
 
     block_serialized = json.dumps(accepted_block)
     message = "accept," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + block_serialized
     message = message.encode()
     time.sleep(5)
-    leader.sendall(message)
+    server1.sendall(message)
+    server2.sendall(message)
+    server3.sendall(message)
+    server4.sendall(message)
 
 def receive_accept(received_index, received_num, received_pid, received_block):
     global accepted_block
@@ -272,14 +302,42 @@ def receive_accept(received_index, received_num, received_pid, received_block):
 def send_accepted(current_index, current_num, current_pid, accepted_block):
     #once this is sent the values are locked and will be decided upon given a majority
     #use a boolean so that future messages won't interrupt this process?
+    global received_accepted_counter
+    global sent_decision
+
+    received_accepted_counter = 0
+    sent_decision = False
+
     message = "accepted," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(accepted_block)
     message = message.encode()
     time.sleep(5)
     leader.sendall(message)
 
 def receive_accepted(received_index, received_num, received_pid, received_block):
-    #check for majority THREADING, and what value was finally decided on
-    send_decision(received_index, received_num, received_pid, received_block)
+    global received_accepted_counter
+    global sent_decision
+    global received_accepted_counter_dict
+    global block_ballot_no_dict
+
+    if not sent_decision:
+        if received_block not in received_accepted_counter_dict:
+            received_accepted_counter_dict[received_block] = 1
+        else:
+            received_accepted_counter_dict[received_block] = received_accepted_counter_dict[received_block] + 1
+
+        block_ballot_no_dict[received_block] = [old_index, old_num, old_pid]
+
+        for block in received_promise_counter_dict:
+            if received_promise_counter_dict[block] >= 2:
+                received_accepted_counter = received_promise_counter_dict[block]
+                accepted_block = block
+                current_index = block_ballot_no_dict[block][0]
+                current_num = block_ballot_no_dict[block][1]
+                current_pid = block_ballot_no_dict[block][2]
+
+        if (received_accepted_counter >= 2):
+            sent_decision = True
+            send_decision(current_index, current_num, current_pid, accepted_block)
     
 def send_decision(final_index, final_num, final_pid, final_block):
     #broadcast final decision value to all servers, add to blockchain
@@ -339,7 +397,6 @@ def check_ballot_no(index, num, pid): ############TODO: check if value is None
     current_num = num
     current_pid = pid
     return True
-  
 
 def server_listen(stream, addr):
     while True:
@@ -373,7 +430,6 @@ def server_listen(stream, addr):
             #from client
             #start leader election as leader aka SEND proposal
             send_proposal()
-            threading.Thread(target=check_if_majority).start()
         elif message[0:7] == "prepare":
             #from leader
             received_index = int(message.split(',')[1])
@@ -577,14 +633,6 @@ def check_ballot_no(index, num, pid):
     current_pid = pid
     return True
 
-def check_if_majority():
-    time.sleep(30) #todo: change timeout time if needed
-    if received_counter >= 2:
-        #todo: continue with process
-        return True
-    #todo: stop the process
-    return False
-
 #initialize blockchain with operation and <k,v> but no hash or nonce
 '''blockchain =  [
                 ["unique id", ["get", "a_netid"], "previous block hash", "nonce", boolean(decided)],
@@ -600,7 +648,13 @@ q = queue.Queue()
 active_networks = {}
 is_leader = False
 leader = None
-received_counter = 0
+received_promise_counter = 0
+received_accepted_counter = 0
+received_promise_counter_dict = []
+received_accepted_counter_dict = []
+sent_accept = False
+sent_decision = False
+
 
 #for ballot_no comparing
 current_index = 0 #depth
