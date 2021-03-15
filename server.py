@@ -140,6 +140,7 @@ def cmd_input():
         except EOFError:
             pass
 
+####TODO: add client to every function until decision as parameter
 def send_proposal(operation):
     global current_index
     global current_num
@@ -167,7 +168,7 @@ def receive_proposal(received_index, received_num, pid, operation):
     check_ballot_no(received_index, received_num, pid)
     send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, operation)
     
-def send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, operation):    
+def send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, operation):  
     message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + str(accepted_block) + operation####change accepted_block if i can't send None type
     ########change accepted_block to entire block TODO: change block to serialized string thing
     message = message.encode() ################accept_num is a pair of the previously accepted ballot number and value(block)
@@ -190,21 +191,27 @@ def send_accept(received_index, received_num, received_pid, old_index, old_num, 
     global current_num
     global current_pid
     global accepted_block
+
+    block_exists = False
+
+    for i in range(len(blockchain)):
+        if blockchain[i][0] == unique_id:
+            block_exists = True
     
     if (operation.split(',')[0] == "put"):
         block_operation = "put"
         key = operation.split(',')[1]
         value = operation.split(',')[2]
-    elif (operation.split(',')[0] == "put"):
-        block_operation = "put"
+    elif (operation.split(',')[0] == "get"):
+        block_operation = "get"
         key = operation.split(',')[1]
         value = None
 
-    if(accepted_block == None):
+    if(accepted_block == None and not block_exists):
         current_index = received_index
         current_num = received_num
         current_pid = received_pid
-        generate_block(block_operation, key, value)
+        generate_block(unique_id, block_operation, key, value)
         accepted_block = blockchain[-1]
     else:
         current_index = old_index
@@ -212,7 +219,8 @@ def send_accept(received_index, received_num, received_pid, old_index, old_num, 
         current_pid = old_pid
         accepted_block = received_block
 
-    message = "accept," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(accepted_block)
+    block_serialized = json.dumps(accepted_block)
+    message = "accept," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + block_serialized
     message = message.encode()
     time.sleep(5)
     leader.sendall(message)
@@ -229,6 +237,15 @@ def receive_accept(received_index, received_num, received_pid, received_block):
     
     if (check_ballot_no(received_index, received_num, received_pid)):
         accepted_block = received_block
+
+        block_exists = False
+
+        for i in range(len(blockchain)):
+            if blockchain[i][0] == unique_id:
+                block_exists = True
+        if not block_exists:
+            blockchain.append(accepted_block)
+            
         send_accepted(current_index, current_num, current_pid, accepted_block)
   
 def send_accepted(current_index, current_num, current_pid, accepted_block):
@@ -253,10 +270,38 @@ def send_decision(final_index, final_num, final_pid, final_block):
     server2.sendall(message)
     server3.sendall(message)
     server4.sendall(message)
+    send_message_to_client(final_block)
+    blockchain[-1][-1] = True #set last block to be "decided"
 
 def receive_decision(received_index, received_num, received_pid, received_block):
-    #TODO change block boolean to decided to true
+    if received_block == blockchain[-1]:
+        blockchain[-1][-1] = True
+        #todo: write blockchain to file?
     pass
+
+def send_message_to_client(client, block):
+    client_socket = get_client_socket(client)
+    if block[0][0] == "put":
+        message = "ack"
+        message_bytes = message.encode()
+        client_socket.sendall(message_bytes)
+    elif block[0][0] == "get":
+        value_dict = kv_store[block[0][1]]
+        message = json.dumps(value_dict)
+        message_bytes = message.encode()
+        client_socket.sendall(message_bytes)
+
+
+#sends in client as a string, i.e. "client1"
+def get_client_socket(client):
+    if client[-1] == '1':
+        return client1
+    elif client[-1] == '2':
+        return client2
+    elif client[-1] == '3':
+        return client3
+    else:
+        print("no correct client found for ", client)
   
 def check_ballot_no(index, num, pid): ############TODO: check if value is None
     global current_index
@@ -320,7 +365,7 @@ def server_listen(stream, addr):
             old_index = int(message.split(',')[4])
             old_num = int(message.split(',')[5])
             old_pid = int(message.split(',')[6])
-            received_block = int(message.split(',')[7]) #TODO CHANGE ALL RECEIVED BLOCKS TO NOT CAST TO INT, BUT TO THE SERIALIZE THING
+            received_block = json.loads(message.split(',')[7]) #TODO CHANGE ALL RECEIVED BLOCKS TO NOT CAST TO INT, BUT TO THE SERIALIZE THING
             operation = int(message.split(',')[8])
             receive_promise(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block, operation)
         elif message[0:8] == "accepted":
@@ -328,14 +373,14 @@ def server_listen(stream, addr):
             received_index = int(message.split(',')[1])
             received_num = int(message.split(',')[2])
             received_pid = int(message.split(',')[3])
-            received_block = int(message.split(',')[4])
+            received_block = json.loads(message.split(',')[4])
             receive_accepted(received_index, received_num, received_pid, received_block)
         elif message[0:6] == "accept":
             #from leader
             received_index = int(message.split(',')[1])
             received_num = int(message.split(',')[2])
             received_pid = int(message.split(',')[3])
-            received_block = int(message.split(',')[4])
+            received_block = json.loads(message.split(',')[4])
             receive_accept(received_index, received_num, received_pid, received_block)
         elif message[0:6] == "decide":
             #from leader
@@ -345,15 +390,15 @@ def server_listen(stream, addr):
         print("message: " + message + ", received from " + sender)
 
 #generate hashes and nonces for each block
-def generate_block(current_operation, key, value):
+def generate_block(unique_id, current_operation, key, value):
     global blockchain
     letters = string.ascii_letters
     current_hash = ""
     i = len(blockchain)
     if i != 0:
-        previous_operation = blockchain[i-1][0][0]
-        previous_hash = blockchain[i-1][1]
-        previous_nonce = blockchain[i-1][2]
+        previous_operation = blockchain[i-1][1][0]
+        previous_hash = blockchain[i-1][2]
+        previous_nonce = blockchain[i-1][3]
         operation_nonce_hash = (previous_operation+previous_nonce+previous_hash).encode()
         current_hash = hashlib.sha256(operation_nonce_hash).hexdigest()
 
@@ -371,20 +416,20 @@ def generate_block(current_operation, key, value):
     block_op = [current_operation, key]
     if value is not None:
         block_op.append(value)
-    blockchain.append([block_op, current_hash, nonce])
+    blockchain.append([unique_id, block_op, current_hash, nonce, False])
         
 
 def write_blockchain_to_file(filename):
     f = open(filename, "w")
     for i in range(len(blockchain)):
-        f.write("operation:" + blockchain[i][0][0]+"\n")
-        f.write("key:" + blockchain[i][0][1]+"\n")
-        if len(blockchain[i][0]) > 2:
-            for key, value in blockchain[i][0][2].items():
+        f.write("operation:" + blockchain[i][1][0]+"\n")
+        f.write("key:" + blockchain[i][1][1]+"\n")
+        if len(blockchain[i][1]) > 2:
+            for key, value in blockchain[i][1][2].items():
                 f.write("value_k:" + key +"\n")
                 f.write("value_v:" + value +"\n")
-        f.write("hash:" + blockchain[i][1]+"\n")
-        f.write("nonce:" + blockchain[i][2]+"\n")
+        f.write("hash:" + blockchain[i][2]+"\n")
+        f.write("nonce:" + blockchain[i][3]+"\n")
     f.close()
 
 def read_blockchain_from_file(filename):
@@ -440,13 +485,13 @@ def read_blockchain_from_file(filename):
         blockchain.append(block)
         
 def generate_kv_store():
-    global kvStore
+    global kv_store
     for i in range(len(blockchain)):
         val = {}
-        if blockchain[i][0][0] == "put":
-            for key, value in blockchain[i][0][2].items():
+        if blockchain[i][1][0] == "put":
+            for key, value in blockchain[i][1][2].items():
                 val[key] = value
-            kvStore[blockchain[i][0][1]] = val
+            kv_store[blockchain[i][1][1]] = val
 
 def recover_data():
     read_blockchain_from_file()
@@ -457,7 +502,7 @@ def print_blockchain():
         print(blockchain[i])
 
 def print_kv_store():
-    print(kvStore)
+    print(kv_store)
 
 def print_queue():
     print(list(q.queue))
@@ -509,15 +554,15 @@ def check_ballot_no(index, num, pid):
 
 #initialize blockchain with operation and <k,v> but no hash or nonce
 '''blockchain =  [
-                [["get", "a_netid"], "", ""],
-                [["put", "a_netid", {"phone_number":"111-222-3333"}], "", ""],
-                [["put", "bob_netid", {"phone_number":"333-222-1111"}], "", ""],
-                [["get", "bob_netid"], "", ""],
-                [["get", "cat_netid"], "", ""]
+                ["unique id", ["get", "a_netid"], "previous block hash", "nonce", boolean(decided)],
+                ["", ["put", "a_netid", {"phone_number":"111-222-3333"}], "", "", False],
+                ["", ["put", "bob_netid", {"phone_number":"333-222-1111"}], "", "", False],
+                ["", ["get", "bob_netid"], "", "", False],
+                ["", ["get", "cat_netid"], "", "", False]
                 ]'''
 
 blockchain = []
-kvStore = {}
+kv_store = {}
 q = queue.Queue()
 active_networks = {}
 is_leader = False

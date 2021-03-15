@@ -63,39 +63,51 @@ def cmd_input():
 
 def send_get_request(message):
 	global response_received
+	unique_id = generate_unique_id()
+	message = message + " " + unique_id
+	message = message.replace(' ', ',')
 	print("sending get request: ", message)
 	#message = "get " + key
 	message_bytes = message.encode()
 	current_server.sendall(message_bytes)
 
 	threading.Thread(target=check_if_response).start()
-	recv_msg_bytes = current_server.recv(1024)
+	recv_msg_bytes = client_socket.recv(1024)
 	if not recv_msg_bytes:
 		return
 	response_received = True
 	recv_msg = recv_msg_bytes.decode()
-	if recv_msg == "NO_KEY": #todo: print out results for all of these?
+	if recv_msg == "NO_KEY":
+		print("no key in server's kv_store")
 		return
 	else:
-		return #todo: handle when client receives a value
+		value_dict = json.loads(recv_msg)
+		print("received dict from server: ", value_dict)
+		return
 
 
 def send_put_request(message):
 	global response_received
 	#print("sending put request: key:", key, ", value: ", value)
+	unique_id = generate_unique_id()
+	message = message + " " + unique_id
+	message = message.replace(' ', ',')
 	print("sending put request: ", message)
 	#message = "put " + key + " " + value
 	message_bytes = message.encode()
 	current_server.sendall(message_bytes)
 
 	threading.Thread(target=check_if_response).start()
-	recv_msg_bytes = current_server.recv(1024)
+	recv_msg_bytes = client_socket.recv(1024)
 	if not recv_msg_bytes:
 		return
 	response_received = True
 	recv_msg = recv_msg_bytes.decode()
 	if recv_msg == "ack":
+		print("successfully put data in server's kv_store")
 		return
+	else:
+		print("unsuccessful put request")
 
 def send_leader_request():
 	global response_received
@@ -105,7 +117,7 @@ def send_leader_request():
 	current_server.sendall(message_bytes)
 
 	threading.Thread(target=check_if_response).start()
-	recv_msg_bytes = current_server.recv(1024)
+	recv_msg_bytes = client_socket.recv(1024)
 	if not recv_msg_bytes:
 		return
 	response_received = True
@@ -137,7 +149,10 @@ def handle_no_response():
 	switch_servers()
 	send_leader_request()
 
-#todo: do i have to do the faillink stuff and print blockchain in the client?
+def generate_unique_id():
+	letters = string.ascii_letters
+	unique_id = ''.join(random.choice(letters) for i in range(20))
+	return unique_id
 
 
 #ask tomorrow if we should expect "connect" input to connect to servers
@@ -145,6 +160,11 @@ process_id = int(sys.argv[1])
 
 file = open('config.json')
 data = json.load(file)
+
+client_socket = socket.socket()
+client_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+client_socket.bind((socket.gethostname(), data["client"+str(process_id)]))
+client_socket.listen(32)
 
 server1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
