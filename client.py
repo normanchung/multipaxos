@@ -18,6 +18,7 @@ def connect():
 
 def cmd_input():
 	global response_received
+	global message_to_send
 	while True:
 		try:
 			#if input is connect, connect to other clients
@@ -31,6 +32,7 @@ def cmd_input():
 				which_server = inp[5:12]
 				operation = inp[13:inp.find(' ', 13)]
 				response_received = False
+				unique_id = generate_unique_id()
 
 				if operation == 'leader':
 					send_leader_request()
@@ -38,11 +40,15 @@ def cmd_input():
 				elif operation == 'get':
 					message = inp[13:]
 					message = "client" + str(process_id) + " " + message
+					message = message + " " + unique_id
+					message_to_send = message
 					time.sleep(5)
 					send_get_request(message)
 				elif operation == 'put':
 					message = inp[13:]
 					message = "client" + str(process_id) + " " + message
+					message = message + " " + unique_id
+					message_to_send = message
 					time.sleep(5)
 					send_put_request(message)
 				else:
@@ -63,8 +69,6 @@ def cmd_input():
 
 def send_get_request(message):
 	global response_received
-	unique_id = generate_unique_id()
-	message = message + " " + unique_id
 	message = message.replace(' ', ',')
 	print("sending get request: ", message)
 	#message = "get " + key
@@ -89,8 +93,6 @@ def send_get_request(message):
 def send_put_request(message):
 	global response_received
 	#print("sending put request: key:", key, ", value: ", value)
-	unique_id = generate_unique_id()
-	message = message + " " + unique_id
 	message = message.replace(' ', ',')
 	print("sending put request: ", message)
 	#message = "put " + key + " " + value
@@ -123,6 +125,12 @@ def send_leader_request():
 	response_received = True
 	recv_msg = recv_msg_bytes.decode()
 	if recv_msg == "ok": #todo: change this to what's sent when new leader is determined
+		if (message_to_send[:message_to_send.find(',')] == "get"):
+			send_get_request(message)
+		elif (message_to_send[:message_to_send.find(',')] == "put"):
+			send_put_request(message)
+		else:
+			print("message_to_send is not a get or put request")
 		return
 
 def switch_servers():
@@ -140,9 +148,12 @@ def switch_servers():
 		current_server = server1
 
 def check_if_response():
+	global message_to_send
 	time.sleep(20) #todo: change timeout time if needed
 	if not response_received:
 		handle_no_response()
+	else:
+		message_to_send = ""
 
 def handle_no_response():
 	print("no response from current server. switching servers and sending leader request")
@@ -174,5 +185,6 @@ server5 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 current_server = server1
 response_received = False
+message_to_send = ""
 
 threading.Thread(target=cmd_input).start()
