@@ -178,7 +178,8 @@ def send_promise(current_index, current_num, current_pid, old_index, old_num, ol
     is_leader = False
     leader = get_correct_server(proposer_pid)
 
-    message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + str(accepted_block)
+    block_serialized = json.dumps(accepted_block)
+    message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + block_serialized
     #TODO: change block to serialized string thing
     #what if accepted_block is none?
     message = message.encode()
@@ -236,7 +237,7 @@ def receive_promise(received_index, received_num, received_pid, old_index, old_n
         if (received_promise_counter >= 2):
             is_leader = True
             sent_accept = True
-            send_accept()
+            send_accept() #TODO: check if i should send to accept or send ack to client then wait for request
 
 def send_accept():
     global accepted_block
@@ -312,7 +313,8 @@ def send_accepted(current_index, current_num, current_pid, accepted_block):
     received_accepted_counter = 0
     sent_decision = False
 
-    message = "accepted," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(accepted_block)
+    block_serialized = json.dumps(accepted_block)
+    message = "accepted," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + block_serialized
     message = message.encode()
     time.sleep(5)
     leader.sendall(message)
@@ -345,7 +347,8 @@ def receive_accepted(received_index, received_num, received_pid, received_block)
     
 def send_decision(final_index, final_num, final_pid, final_block):
     #broadcast final decision value to all servers, add to blockchain
-    message = "decide," + str(final_index) + "," + str(final_num) + "," + str(final_pid) + "," + str(final_block)
+    block_serialized = json.dumps(final_block)
+    message = "decide," + str(final_index) + "," + str(final_num) + "," + str(final_pid) + "," + block_serialized
     message = message.encode()
     #broadcast to all servers
     time.sleep(5)
@@ -353,7 +356,7 @@ def send_decision(final_index, final_num, final_pid, final_block):
     server2.sendall(message)
     server3.sendall(message)
     server4.sendall(message)
-    send_message_to_client(final_block)
+    send_message_to_client(final_block) #TODO: needs client as a parameter here, check if final_block should be serialized
     blockchain[-1][-1] = True #set last block to be "decided"
 
 def receive_decision(received_index, received_num, received_pid, received_block):
@@ -414,10 +417,10 @@ def server_listen(stream, addr):
         if not message:
             break
         message = message.decode()
-        sender = message[0:7]
+        sender = message.split(',')[0]
         #message = message[8:]
         #potentially make message[0:7] the client or server number
-        if message[0:3] == "get":
+        if message.split(',')[1] == "get":
             #from clients
             if not is_leader:
                 message = message.encode()
@@ -425,7 +428,7 @@ def server_listen(stream, addr):
             else:
                 #start proposal
                 q.put(message)
-        elif message[0:3] == "put":
+        elif message.split(',')[1] == "put":
             #from clients
             if not is_leader:
                 message = message.encode()
@@ -433,18 +436,18 @@ def server_listen(stream, addr):
             else:
                 #start proposal
                 q.put(message)
-        elif message[0:6] == "leader":
+        elif message.split(',')[1] == "leader":
             #from client
             #start leader election as leader aka SEND proposal
             send_proposal()
-        elif message[0:7] == "prepare":
+        elif message.split(',')[0] == "prepare":
             #from leader
             received_index = int(message.split(',')[1])
             received_num = int(message.split(',')[2])
             proposer_pid = int(message.split(',')[3])
             #operation = int(message.split(',')[4])
             receive_proposal(received_index, received_num, proposer_pid)
-        elif message[0:7] == "promise":
+        elif message.split(',')[0] == "promise":
             #from server
             received_index = int(message.split(',')[1])
             received_num = int(message.split(',')[2])
@@ -456,26 +459,30 @@ def server_listen(stream, addr):
             received_block = json.loads(message.split(',')[8]) #TODO CHANGE ALL RECEIVED BLOCKS TO NOT CAST TO INT, BUT TO THE SERIALIZE THING
             #operation = int(message.split(',')[8])
             receive_promise(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block)
-        elif message[0:8] == "accepted":
+        elif message.split(',')[0] == "accepted":
             #from server
             received_index = int(message.split(',')[1])
             received_num = int(message.split(',')[2])
             received_pid = int(message.split(',')[3])
             received_block = json.loads(message.split(',')[4])
             receive_accepted(received_index, received_num, received_pid, received_block)
-        elif message[0:6] == "accept":
+        elif message.split(',')[0] == "accept":
             #from leader
             received_index = int(message.split(',')[1])
             received_num = int(message.split(',')[2])
             received_pid = int(message.split(',')[3])
             received_block = json.loads(message.split(',')[4])
             receive_accept(received_index, received_num, received_pid, received_block)
-        elif message[0:6] == "decide":
+        elif message.split(',')[0] == "decide":
             #from leader
-            receive_decision(message)
+            received_index = int(message.split(',')[1])
+            received_num = int(message.split(',')[2])
+            received_pid = int(message.split(',')[3])
+            received_block = json.loads(message.split(',')[4])
+            receive_decision(received_index, received_num, received_pid, received_block)
 
         #send received message from client
-        print("message: " + message + ", received from " + sender)
+        #print("message: " + message + ", received from " + sender)
 
 #generate hashes and nonces for each block
 def generate_block(unique_id, current_operation, key, value):
