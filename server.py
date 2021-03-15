@@ -14,34 +14,34 @@ import hashlib
 def connect():
     #setting up the connection from server to other servers
     if process_id == 1:
-        server1.connect((socket.gethostname(), data["2"]))
-        server2.connect((socket.gethostname(), data["3"]))
-        server3.connect((socket.gethostname(), data["4"]))
-        server4.connect((socket.gethostname(), data["5"]))
+        server1.connect((socket.gethostname(), data["server2"]))
+        server2.connect((socket.gethostname(), data["server3"]))
+        server3.connect((socket.gethostname(), data["server4"]))
+        server4.connect((socket.gethostname(), data["server5"]))
 
     elif process_id == 2:
-        server1.connect((socket.gethostname(), data["1"]))
-        server2.connect((socket.gethostname(), data["3"]))
-        server3.connect((socket.gethostname(), data["4"]))
-        server4.connect((socket.gethostname(), data["5"]))
+        server1.connect((socket.gethostname(), data["server1"]))
+        server2.connect((socket.gethostname(), data["server3"]))
+        server3.connect((socket.gethostname(), data["server4"]))
+        server4.connect((socket.gethostname(), data["server5"]))
 
     elif process_id == 3:
-        server1.connect((socket.gethostname(), data["1"]))
-        server2.connect((socket.gethostname(), data["2"]))
-        server3.connect((socket.gethostname(), data["4"]))
-        server4.connect((socket.gethostname(), data["5"]))
+        server1.connect((socket.gethostname(), data["server1"]))
+        server2.connect((socket.gethostname(), data["server2"]))
+        server3.connect((socket.gethostname(), data["server4"]))
+        server4.connect((socket.gethostname(), data["server5"]))
 
     elif process_id == 4:
-        server1.connect((socket.gethostname(), data["1"]))
-        server2.connect((socket.gethostname(), data["2"]))
-        server3.connect((socket.gethostname(), data["3"]))
-        server4.connect((socket.gethostname(), data["5"]))
+        server1.connect((socket.gethostname(), data["server1"]))
+        server2.connect((socket.gethostname(), data["server2"]))
+        server3.connect((socket.gethostname(), data["server3"]))
+        server4.connect((socket.gethostname(), data["server5"]))
 
     elif process_id == 5:
-        server1.connect((socket.gethostname(), data["1"]))
-        server2.connect((socket.gethostname(), data["2"]))
-        server3.connect((socket.gethostname(), data["3"]))
-        server4.connect((socket.gethostname(), data["4"]))
+        server1.connect((socket.gethostname(), data["server1"]))
+        server2.connect((socket.gethostname(), data["server2"]))
+        server3.connect((socket.gethostname(), data["server3"]))
+        server4.connect((socket.gethostname(), data["server4"]))
 
     active_networks[server1] = True
     active_networks[server2] = True
@@ -87,7 +87,7 @@ def cmd_input():
             #if input is connect, connect to other servers
             inp = input()
             if inp == 'connect':
-                print("server" + str(process_id) + " connecting to servers...")
+                print(str(process_id) + " connecting to servers...")
                 connect()
 
             #if input is broadcast, send to other servers
@@ -141,12 +141,11 @@ def cmd_input():
             pass
 
 ####TODO: add client to every function until decision as parameter
-def send_proposal(operation):
-    global current_index
+def send_proposal():
     global current_num
     
     current_num += 1
-    message = "prepare," + str(current_index) + "," + str(current_num) + "," + str(process_id) + "," + operation #more things to add here for local comparison?
+    message = "prepare," + str(current_index) + "," + str(current_num) + "," + str(process_id) #more things to add here for local comparison?
     message = message.encode()
     #broadcast message to all servers
     time.sleep(5)
@@ -155,69 +154,95 @@ def send_proposal(operation):
     server3.sendall(message)
     server4.sendall(message)
 
-def receive_proposal(received_index, received_num, pid, operation):
-    global current_index
-    global current_num
-    global current_pid
+def receive_proposal(received_index, received_num, proposer_pid):
     #check if the values are less than current values for rejection
     #otherwise accept and send promise
     #index aka current_index of blockchain, num aka ballot num of current paxos iteration, pid of leader
+
     old_index = current_index
     old_num = current_num
     old_pid = current_pid
     check_ballot_no(received_index, received_num, pid)
-    send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, operation)
+    send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, proposer_pid)
     
-def send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, operation):  
-    message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + str(accepted_block) + operation####change accepted_block if i can't send None type
+def send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, proposer_pid):
+    global is_leader
+    global leader
+    is_leader = False
+    leader = get_correct_server(proposer_pid)
+
+    message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + str(accepted_block)
     ########change accepted_block to entire block TODO: change block to serialized string thing
-    message = message.encode() ################accept_num is a pair of the previously accepted ballot number and value(block)
+    #what if accepted_block is none?
+    message = message.encode()
     #send to server that sent it to me
     #maybe use get_correct_server to determine what server sent info and make that the leader variable
+
     time.sleep(5)
     leader.sendall(message)
 
-def receive_promise(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block, operation):
-    #need to check for majority through threads?
+def receive_promise(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block):
     #check for if any other message was already accepted, and then start proposing this value
     #Upon receive (“promise”, BallotNum, b, val) from majority
     #if all vals = bottom then myVal = initial value
     #else myVal = received val with highest b 
-
-    send_accept(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block, operation)
-
-def send_accept(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block, operation):
     global current_index
     global current_num
     global current_pid
     global accepted_block
+    global make_new_block
+    global is_leader
 
-    block_exists = False
+    #need to check for majority through threads?
 
-    for i in range(len(blockchain)):
-        if blockchain[i][0] == unique_id:
-            block_exists = True
-    
-    if (operation.split(',')[0] == "put"):
-        block_operation = "put"
-        key = operation.split(',')[1]
-        value = operation.split(',')[2]
-    elif (operation.split(',')[0] == "get"):
-        block_operation = "get"
-        key = operation.split(',')[1]
-        value = None
+    is_leader = True
 
-    if(accepted_block == None and not block_exists):
+    if(accepted_block == None and not block_exists): #THIS BOOLEAN OF block_exists DOES NOT WORK
         current_index = received_index
         current_num = received_num
         current_pid = received_pid
-        generate_block(unique_id, block_operation, key, value)
-        accepted_block = blockchain[-1]
+        #generate_block(unique_id, block_operation, key, value)
+        #accepted_block = blockchain[-1]
+        make_new_block = True
     else:
         current_index = old_index
         current_num = old_num
         current_pid = old_pid
         accepted_block = received_block
+        make_new_block = False
+
+    #TODO: make this current server the leader variable
+    #TODO: send acknowledgement to client once majority is reached
+    send_accept()
+
+def send_accept():
+    global accepted_block
+
+    block_exists = False
+    block_operation = ""
+    key = ""
+    value = {}
+    unique_id = ""
+
+    operation = q.get()
+    if (operation.split(',')[0] == "put"):
+        block_operation = "put"
+        key = operation.split(',')[1]
+        value = operation.split(',')[2] #dictionary
+        unique_id = operation.split(',')[3]
+    elif (operation.split(',')[0] == "get"):
+        block_operation = "get"
+        key = operation.split(',')[1]
+        value = None
+        unique_id = operation.split(',')[2]
+
+    for i in range(len(blockchain)):
+        if blockchain[i][0] == unique_id:
+            block_exists = True
+
+    if(make_new_block):
+        generate_block(unique_id, block_operation, key, value)
+        accepted_block = blockchain[-1]
 
     block_serialized = json.dumps(accepted_block)
     message = "accept," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + block_serialized
@@ -226,9 +251,6 @@ def send_accept(received_index, received_num, received_pid, old_index, old_num, 
     leader.sendall(message)
 
 def receive_accept(received_index, received_num, received_pid, received_block):
-    global current_index
-    global current_num
-    global current_pid
     global accepted_block
 
     #check for majority through threads
@@ -244,7 +266,7 @@ def receive_accept(received_index, received_num, received_pid, received_block):
             if blockchain[i][0] == unique_id:
                 block_exists = True
         if not block_exists:
-            blockchain.append(accepted_block)
+            blockchain.append(accepted_block) #TODO CHANGE THIS TO SEND TO GENERATE_BLOCK
             
         send_accepted(current_index, current_num, current_pid, accepted_block)
   
@@ -337,7 +359,8 @@ def server_listen(stream, addr):
                 leader.sendall(message)
             else:
                 #start proposal
-                send_proposal(message)
+                q.put(message)
+                send_accept()
         elif message[0:3] == "put":
             #from clients
             if not is_leader:
@@ -345,18 +368,19 @@ def server_listen(stream, addr):
                 leader.sendall(message)
             else:
                 #start proposal
-                send_proposal(message)
+                q.put(message)
+                send_accept()
         elif message[0:6] == "leader":
             #from client
             #start leader election as leader aka SEND proposal
-            send_proposal(message)
+            send_proposal()
         elif message[0:7] == "prepare":
             #from leader
             received_index = int(message.split(',')[1])
             received_num = int(message.split(',')[2])
-            pid = int(message.split(',')[3])
-            operation = int(message.split(',')[4])
-            receive_proposal(received_index, received_num, pid, operation)
+            proposer_pid = int(message.split(',')[3])
+            #operation = int(message.split(',')[4])
+            receive_proposal(received_index, received_num, proposer_pid)
         elif message[0:7] == "promise":
             #from server
             received_index = int(message.split(',')[1])
@@ -365,9 +389,10 @@ def server_listen(stream, addr):
             old_index = int(message.split(',')[4])
             old_num = int(message.split(',')[5])
             old_pid = int(message.split(',')[6])
-            received_block = json.loads(message.split(',')[7]) #TODO CHANGE ALL RECEIVED BLOCKS TO NOT CAST TO INT, BUT TO THE SERIALIZE THING
-            operation = int(message.split(',')[8])
-            receive_promise(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block, operation)
+            proposer_pid = int(message.split(',')[7])
+            received_block = json.loads(message.split(',')[8]) #TODO CHANGE ALL RECEIVED BLOCKS TO NOT CAST TO INT, BUT TO THE SERIALIZE THING
+            #operation = int(message.split(',')[8])
+            receive_promise(received_index, received_num, received_pid, old_index, old_num, old_pid, received_block)
         elif message[0:8] == "accepted":
             #from server
             received_index = int(message.split(',')[1])
@@ -415,7 +440,7 @@ def generate_block(unique_id, current_operation, key, value):
 
     block_op = [current_operation, key]
     if value is not None:
-        block_op.append(value)
+        block_op.append(value) #TODO add json.loads for value dictionary
     blockchain.append([unique_id, block_op, current_hash, nonce, False])
         
 
@@ -565,8 +590,6 @@ blockchain = []
 kv_store = {}
 q = queue.Queue()
 active_networks = {}
-is_leader = False
-leader = None
 
 #for ballot_no comparing
 current_index = 0 #depth
@@ -574,13 +597,15 @@ current_num = 0 #ballot number
 current_pid = 0 #process id
 
 accepted_block = None #accepted block
-
+make_new_block = False
+is_leader = False
+leader = None
 
 process_id = int(sys.argv[1])
 
 file = open('config.json')
 data = json.load(file)
-PORT = data[str(process_id)]
+PORT = data["server" + str(process_id)]
 
 #initialize blockchain from written file if there's data in it
 filename = "data_server"+str(process_id)+".txt"
@@ -596,6 +621,15 @@ server1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+if(process_id == 1):
+    is_leader = True
+else:
+    is_leader = False
+    leader = server1
+
+
+
 threading.Thread(target=cmd_input).start()
 
 while True:
