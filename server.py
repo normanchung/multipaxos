@@ -162,8 +162,8 @@ def receive_proposal(received_index, received_num, proposer_pid):
     old_index = current_index
     old_num = current_num
     old_pid = current_pid
-    check_ballot_no(received_index, received_num, pid)
-    send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, proposer_pid)
+    if(check_ballot_no(received_index, received_num, pid)):
+        send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, proposer_pid)
     
 def send_promise(current_index, current_num, current_pid, old_index, old_num, old_pid, proposer_pid):
     global is_leader
@@ -172,7 +172,7 @@ def send_promise(current_index, current_num, current_pid, old_index, old_num, ol
     leader = get_correct_server(proposer_pid)
 
     message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + str(accepted_block)
-    ########change accepted_block to entire block TODO: change block to serialized string thing
+    #TODO: change block to serialized string thing
     #what if accepted_block is none?
     message = message.encode()
     #send to server that sent it to me
@@ -223,7 +223,8 @@ def send_accept():
     key = ""
     value = {}
     unique_id = ""
-
+    
+    #print(q.queue[0])
     operation = q.get()
     if (operation.split(',')[0] == "put"):
         block_operation = "put"
@@ -243,6 +244,10 @@ def send_accept():
     if(make_new_block):
         generate_block(unique_id, block_operation, key, value)
         accepted_block = blockchain[-1]
+    else:
+        pass
+        #TODO: doesn't this mean that the block has already been added, and should just return to client right away with an ack or a key value?
+
 
     block_serialized = json.dumps(accepted_block)
     message = "accept," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + block_serialized
@@ -339,6 +344,11 @@ def check_ballot_no(index, num, pid): ############TODO: check if value is None
     current_num = num
     current_pid = pid
     return True
+
+def start_send():
+  while True:
+    if not q.empty():
+        send_accept()  
   
 
 def server_listen(stream, addr):
@@ -359,7 +369,7 @@ def server_listen(stream, addr):
             else:
                 #start proposal
                 q.put(message)
-                send_accept()
+                threading.Thread(target=start_send).start()
         elif message[0:3] == "put":
             #from clients
             if not is_leader:
@@ -368,7 +378,7 @@ def server_listen(stream, addr):
             else:
                 #start proposal
                 q.put(message)
-                send_accept()
+                threading.Thread(target=start_send).start()
         elif message[0:6] == "leader":
             #from client
             #start leader election as leader aka SEND proposal
@@ -609,8 +619,6 @@ current_pid = 0 #process id
 
 accepted_block = None #accepted block
 make_new_block = False
-is_leader = False
-leader = None
 
 process_id = int(sys.argv[1])
 
