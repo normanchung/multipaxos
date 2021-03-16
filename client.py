@@ -22,6 +22,7 @@ def connect():
 def cmd_input():
 	global response_received
 	global message_to_send
+
 	while True:
 		try:
 			#if input is connect, connect to other clients
@@ -37,7 +38,8 @@ def cmd_input():
 				unique_id = generate_unique_id()
 
 				if operation == 'leader':
-					send_leader_request()
+					received_dict[unique_id] = False
+					send_leader_request(unique_id)
 				#print("sending message: " + message + ", from client " + str(process_id) + " to " + which_server)
 				elif operation == 'get':
 					which_server = inp[5:12]
@@ -81,65 +83,82 @@ def listen_on_port(stream, addr):
 		recv_msg_bytes = stream.recv(1024)
 		print("received message: ", recv_msg_bytes.decode())
 		if not recv_msg_bytes:
-			return
+			pass
 		response_received = True
 		recv_msg = recv_msg_bytes.decode()
-		if recv_msg == "NO_KEY":
+		msg = recv_msg[:recv_msg.find(',')]
+		unique_id = recv_msg[recv_msg.find(',')+1:]
+		if msg == "NO_KEY":
 			result_received = True
+			received_dict[unique_id] = True
 			print("no key in server's kv_store")
 			pass
-		elif recv_msg == "ack":
+		elif msg == "ack":
 			result_received = True
+			received_dict[unique_id] = True
 			print("successfully put data in server's kv_store")
 			pass
-		elif recv_msg == "election successful": #todo: change this to what's sent when new leader is determined
+		elif msg == "election successful": #todo: change this to what's sent when new leader is determined
+			print(message_to_send)
+			received_dict[unique_id] = True
 			if result_received:
 				pass
-			elif (message_to_send[message_to_send.find(',')+1:message_to_send.find(',', message_to_send.find(',')+1)] == "get"):#todo change this
-				send_get_request(message)
-			elif (message_to_send[message_to_send.find(',')+1:message_to_send.find(',', message_to_send.find(',')+1)] == "put"):
-				send_put_request(message)
+			elif (message_to_send[message_to_send.find(' ')+1:message_to_send.find(' ', message_to_send.find(' ')+1)] == "get"):#todo change this
+				send_get_request(message_to_send)
+			elif (message_to_send[message_to_send.find(' ')+1:message_to_send.find(' ', message_to_send.find(' ')+1)] == "put"):
+				send_put_request(message_to_send)
 			else:
 				print("message_to_send is not a get or put request")
 			pass
 		else:
 			result_received = True
-			value_dict = pickle.loads(recv_msg.encode('latin1'))
+			received_dict[unique_id] = True
+			value_dict = pickle.loads(msg.encode('latin1'))
 			print("received dict from server: ", value_dict)
 			pass
 
 def send_get_request(message):
 	global result_received
+	global received_dict
 	result_received = False
+	unique_id = message[message.rfind(' ')+1:]
+	received_dict[unique_id] = False
 	message = message.replace(' ', ',')
 	print("sending get request: ", message)
 	#message = "get " + key
 	message_bytes = message.encode()
 	current_server.sendall(message_bytes)
 
-	threading.Thread(target=check_if_response).start()
+	threading.Thread(target=check_if_response, args=(unique_id,)).start()
 
 
 def send_put_request(message):
 	global result_received
+	global received_dict
 	result_received = False
 	#print("sending put request: key:", key, ", value: ", value)
+	unique_id = message[message.rfind(' ')+1:]
+	print(type(unique_id))
+	print(unique_id)
+	received_dict[unique_id] = False
 	message = message.replace(' ', ',')
 	print("sending put request: ", message)
 	#message = "put " + key + " " + value
 	message_bytes = message.encode()
 	current_server.sendall(message_bytes)
 
-	threading.Thread(target=check_if_response).start()
+	threading.Thread(target=check_if_response, args=(unique_id,)).start()
 
-def send_leader_request():
+def send_leader_request(unique_id):
 	global response_received
+	global received_dict
+	received_dict[unique_id] = False
 	print("sending leader request")
-	message = "client" + str(process_id) + ",leader"
+	message = "client" + str(process_id) + ",leader,"+unique_id
 	message_bytes = message.encode()
 	current_server.sendall(message_bytes)
 
-	threading.Thread(target=check_if_response).start()
+	threading.Thread(target=check_if_response, args=(unique_id,)).start()
 
 def switch_servers():
 	print("switching servers")
@@ -155,14 +174,12 @@ def switch_servers():
 	elif current_server == server5:
 		current_server = server1
 
-def check_if_response():
+def check_if_response(unique_id):
 	global message_to_send
-	time.sleep(23) #todo: change timeout time if needed
+	time.sleep(60) #todo: change timeout time if needed
 	print("checking if responded now")
-	if not response_received:
+	if not received_dict[unique_id]:
 		handle_no_response()
-	else:
-		message_to_send = ""
 
 def handle_no_response():
 	print("no response from current server. switching servers and sending leader request")
@@ -208,6 +225,7 @@ current_server = server1
 response_received = False
 message_to_send = ""
 result_received = False
+received_dict = {}
 
 threading.Thread(target=cmd_input).start()
 

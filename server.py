@@ -103,10 +103,30 @@ def cmd_input():
                 message = "server" + str(process_id) + " " + message
                 message = message.encode()
                 time.sleep(5)
-                server1.sendall(message)
-                server2.sendall(message)
-                server3.sendall(message)
-                server4.sendall(message)
+                if active_networks[server1]:
+                    try:
+                        server1.sendall(message)
+                    except RuntimeError:
+                        active_networks[server1] = False
+                        server1.close()
+                if active_networks[server2]:
+                    try:
+                        server2.sendall(message)
+                    except RuntimeError:
+                        active_networks[server2] = False
+                        server2.close()
+                if active_networks[server3]:
+                    try:
+                        server3.sendall(message)
+                    except RuntimeError:
+                        active_networks[server3] = False
+                        server3.close()
+                if active_networks[server4]:
+                    try:
+                        server4.sendall(message)
+                    except RuntimeError:
+                        active_networks[server4] = False
+                        server4.close()
 
             #if input is send, send from one server to another
             elif inp[0:4] == 'send':
@@ -155,14 +175,34 @@ def send_client_election_successful(client):
 def send_server_election_successful():
     message = "elected,server" + str(process_id)
     message = message.encode()
-    server1.sendall(message)
-    server2.sendall(message)
-    server3.sendall(message)
-    server4.sendall(message)
+    if active_networks[server1]:
+        try:
+            server1.sendall(message)
+        except RuntimeError:
+            active_networks[server1] = False
+            server1.close()
+    if active_networks[server2]:
+        try:
+            server2.sendall(message)
+        except RuntimeError:
+            active_networks[server2] = False
+            server2.close()
+    if active_networks[server3]:
+        try:
+            server3.sendall(message)
+        except RuntimeError:
+            active_networks[server3] = False
+            server3.close()
+    if active_networks[server4]:
+        try:
+            server4.sendall(message)
+        except RuntimeError:
+            active_networks[server4] = False
+            server4.close()
 
 
 ####TODO: add client to every function until decision as parameter
-def send_proposal(client):
+def send_proposal(client, unique_id):
     global received_promise_counter
     global sent_accept
 
@@ -170,16 +210,36 @@ def send_proposal(client):
     received_promise_counter = 0
     print("server",str(process_id)," sending proposal")
 
-    message = "prepare," + str(current_index) + "," + str(current_num) + "," + str(process_id) + ","+ str(client) #more things to add here for local comparison?
+    message = "prepare," + str(current_index) + "," + str(current_num) + "," + str(process_id) + ","+ str(client)+","+unique_id #more things to add here for local comparison?
     message = message.encode()
     #broadcast message to all servers
     time.sleep(5)
-    server1.sendall(message)
-    server2.sendall(message)
-    server3.sendall(message)
-    server4.sendall(message)
+    if active_networks[server1]:
+        try:
+            server1.sendall(message)
+        except RuntimeError:
+            active_networks[server1] = False
+            server1.close()
+    if active_networks[server2]:
+        try:
+            server2.sendall(message)
+        except RuntimeError:
+            active_networks[server2] = False
+            server2.close()
+    if active_networks[server3]:
+        try:
+            server3.sendall(message)
+        except RuntimeError:
+            active_networks[server3] = False
+            server3.close()
+    if active_networks[server4]:
+        try:
+            server4.sendall(message)
+        except RuntimeError:
+            active_networks[server4] = False
+            server4.close()
 
-def receive_proposal(received_index, received_num, proposer_pid, client):
+def receive_proposal(received_index, received_num, proposer_pid, client, unique_id):
     print("server",str(process_id)," receiving proposal")
     #check if the values are less than current values for rejection
     #otherwise accept and send promise
@@ -189,9 +249,9 @@ def receive_proposal(received_index, received_num, proposer_pid, client):
     old_num = current_num
     old_pid = current_pid
     if(check_ballot_no(received_index, received_num, proposer_pid)):
-        send_promise(current_index, current_num, current_pid, client, old_index, old_num, old_pid, proposer_pid)
+        send_promise(current_index, current_num, current_pid, client, old_index, old_num, old_pid, proposer_pid, unique_id)
 
-def send_promise(current_index, current_num, current_pid, client, old_index, old_num, old_pid, proposer_pid):
+def send_promise(current_index, current_num, current_pid, client, old_index, old_num, old_pid, proposer_pid, unique_id):
     print("server",str(process_id)," sending promise")
     global is_leader
     global leader
@@ -212,9 +272,14 @@ def send_promise(current_index, current_num, current_pid, client, old_index, old
     #maybe use get_correct_server to determine what server sent info and make that the leader variable
 
     time.sleep(5)
-    leader.sendall(message)
+    if active_networks[leader]:
+        try:
+            leader.sendall(message)
+        except RuntimeError:
+            active_networks[leader] = False
+            leader.close()
 
-def receive_promise(received_index, received_num, received_pid, client, old_index, old_num, old_pid, received_block):
+def receive_promise(received_index, received_num, received_pid, client, old_index, old_num, old_pid, received_block, unique_id):
     print("server",str(process_id)," receiving promise")
     #check for if any other message was already accepted, and then start proposing this value
     #Upon receive (“promise”, BallotNum, b, val) from majority
@@ -269,7 +334,7 @@ def receive_promise(received_index, received_num, received_pid, client, old_inde
         if (received_promise_counter >= 2):
             is_leader = True
             sent_accept = True
-            send_client_election_successful(client) #TODO: check if i should send to accept or send ack to client then wait for request
+            send_client_election_successful(client, unique_id) #TODO: check if i should send to accept or send ack to client then wait for request
             send_server_election_successful()
 def send_accept():
     print("server",str(process_id)," sending accept")
@@ -333,10 +398,30 @@ def send_accept():
     print(message)
     message = message.encode()
     time.sleep(5)
-    server1.sendall(message)
-    server2.sendall(message)
-    server3.sendall(message)
-    server4.sendall(message)
+    if active_networks[server1]:
+        try:
+            server1.sendall(message)
+        except RuntimeError:
+            active_networks[server1] = False
+            server1.close()
+    if active_networks[server2]:
+        try:
+            server2.sendall(message)
+        except RuntimeError:
+            active_networks[server2] = False
+            server2.close()
+    if active_networks[server3]:
+        try:
+            server3.sendall(message)
+        except RuntimeError:
+            active_networks[server3] = False
+            server3.close()
+    if active_networks[server4]:
+        try:
+            server4.sendall(message)
+        except RuntimeError:
+            active_networks[server4] = False
+            server4.close()
 
 def receive_accept(received_index, received_num, received_pid, received_block):
     print("server",str(process_id)," receiving accept")
@@ -382,7 +467,12 @@ def send_accepted(current_index, current_num, current_pid, accepted_block):
     message = "accepted," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + block_serialized.decode('latin1')
     message = message.encode()
     time.sleep(5)
-    leader.sendall(message)
+    if active_networks[leader]:
+        try:
+            leader.sendall(message)
+        except RuntimeError:
+            active_networks[leader] = False
+            leader.close()
 
 def receive_accepted(received_index, received_num, received_pid, received_block):
     print("server",str(process_id)," receiving accepted")
@@ -435,10 +525,30 @@ def send_decision(final_index, final_num, final_pid, final_block):
         message = message.encode()
         #broadcast to all servers
         time.sleep(5)
-        server1.sendall(message)
-        server2.sendall(message)
-        server3.sendall(message)
-        server4.sendall(message)
+        if active_networks[server1]:
+            try:
+                server1.sendall(message)
+            except RuntimeError:
+                active_networks[server1] = False
+                server1.close()
+        if active_networks[server2]:
+            try:
+                server2.sendall(message)
+            except RuntimeError:
+                active_networks[server2] = False
+                server2.close()
+        if active_networks[server3]:
+            try:
+                server3.sendall(message)
+            except RuntimeError:
+                active_networks[server3] = False
+                server3.close()
+        if active_networks[server4]:
+            try:
+                server4.sendall(message)
+            except RuntimeError:
+                active_networks[server4] = False
+                server4.close()
 
         send_message_to_client(final_block[1], final_block) #TODO: needs client as a parameter here, check if final_block should be serialized
         for i in range(len(blockchain)):
@@ -478,17 +588,17 @@ def send_message_to_client(client, block):
     client_socket = get_client_socket(client)
     message_bytes = b''
     if block[2][0] == "put":
-        message = "ack"
+        message = "ack,"+block[0]
         message_bytes = message.encode()
         client_socket.sendall(message_bytes)
     elif block[2][0] == "get":
         if block[2][1] not in kv_store:
-            message = "NO_KEY"
+            message = "NO_KEY,"+block[0]
             message_bytes = message.encode()
         else:
             value_dict = kv_store[block[2][1]]
             print(value_dict)
-            message_bytes = pickle.dumps(value_dict).decode('latin1').encode()
+            message_bytes = pickle.dumps(value_dict).decode('latin1').encode()+","+block[0]
         #message_bytes = message.encode()
         client_socket.sendall(message_bytes)
 
@@ -546,7 +656,12 @@ def server_listen(stream, addr):
             print("server",str(process_id)+" received get request. message: ", message)
             if not is_leader:
                 message = message.encode()
-                leader.sendall(message)
+                if active_networks[leader]:
+                    try:
+                        leader.sendall(message)
+                    except RuntimeError:
+                        active_networks[leader] = False
+                        leader.close()
             else:
                 #start proposal
                 q.put(message)
@@ -558,7 +673,12 @@ def server_listen(stream, addr):
             #from clients
             if not is_leader:
                 message = message.encode()
-                leader.sendall(message)
+                if active_networks[leader]:
+                    try:
+                        leader.sendall(message)
+                    except RuntimeError:
+                        active_networks[leader] = False
+                        leader.close()
             else:
                 #start proposal
                 q.put(message)
@@ -566,19 +686,21 @@ def server_listen(stream, addr):
             #from client
             #message = message + ",server"+str(process_id) todo: is this line necessary?
             client_sender = int(message.split(',')[0][-1])
+            unique_id = message.split(',')[2]
             if is_leader:
-                send_client_election_successful(client_sender)
+                send_client_election_successful(client_sender, unique_id)
             else:
                 #start leader election as leader aka SEND proposal
-                send_proposal(client_sender)
+                send_proposal(client_sender, unique_id)
         elif message.split(',')[0] == "prepare":
             #from leader
             received_index = int(message.split(',')[1])
             received_num = int(message.split(',')[2])
             proposer_pid = int(message.split(',')[3])
             client = int(message.split(',')[4])
+            unique_id = message.split(',')[5]
             #operation = int(message.split(',')[4])
-            receive_proposal(received_index, received_num, proposer_pid, client)
+            receive_proposal(received_index, received_num, proposer_pid, client, unique_id)
         elif message.split(',')[0] == "promise":
             #from server
             received_index = int(message.split(',')[1])
@@ -590,8 +712,9 @@ def server_listen(stream, addr):
             old_pid = int(message.split(',')[6])
             proposer_pid = int(message.split(',')[7])
             received_block = pickle.loads(message.split(',')[8].encode('latin1'))
+            unique_id = message.split(',')[9]
             #operation = int(message.split(',')[8])
-            receive_promise(received_index, received_num, received_pid, received_client, old_index, old_num, old_pid, received_block)
+            receive_promise(received_index, received_num, received_pid, received_client, old_index, old_num, old_pid, received_block, unique_id)
         elif message.split(',')[0] == "accepted":
             #from server
             received_index = int(message.split(',')[1])
