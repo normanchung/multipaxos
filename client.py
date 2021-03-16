@@ -121,7 +121,7 @@ def listen_on_port(stream, addr):
 				value_dict = pickle.loads(msg.encode('latin1'))
 				print("received dict from server: ", value_dict)
 			except EOFError:
-				pass
+				break
 			pass
 
 def send_get_request(message):

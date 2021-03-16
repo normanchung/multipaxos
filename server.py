@@ -962,6 +962,9 @@ def failProcess():
     server2.close()
     server3.close()
     server4.close()
+    client1.close()
+    client2.close()
+    client3.close()
 
     os._exit(0)
 
