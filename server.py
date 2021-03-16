@@ -552,11 +552,14 @@ def server_listen(stream, addr):
                 #start proposal
                 q.put(message)
         elif message.split(',')[1] == "leader":
+            #from client
             #message = message + ",server"+str(process_id) todo: is this line necessary?
             client_sender = int(message.split(',')[0][-1])
-            #from client
-            #start leader election as leader aka SEND proposal
-            send_proposal(client_sender)
+            if is_leader:
+                send_client_election_successful(client_sender)
+            else:
+                #start leader election as leader aka SEND proposal
+                send_proposal(client_sender)
         elif message.split(',')[0] == "prepare":
             #from leader
             received_index = int(message.split(',')[1])
@@ -600,6 +603,7 @@ def server_listen(stream, addr):
             received_block = pickle.loads(message.split(',')[4].encode('latin1'))
             receive_decision(received_index, received_num, received_pid, received_block)
         elif message.split(',')[0] == "elected":
+            print("received elected message: ", message)
             is_leader = False
             received_server = int(message.split(',')[1][-1])
             leader = get_correct_server(received_server)

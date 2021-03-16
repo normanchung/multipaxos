@@ -75,35 +75,42 @@ def cmd_input():
 
 def listen_on_port(stream, addr):
 	global response_received
+	global result_received
 	while True:
 		print("listening on port")
 		recv_msg_bytes = stream.recv(1024)
-		print("received message")
+		print("received message: ", recv_msg_bytes.decode())
 		if not recv_msg_bytes:
 			return
 		response_received = True
 		recv_msg = recv_msg_bytes.decode()
 		if recv_msg == "NO_KEY":
+			result_received = True
 			print("no key in server's kv_store")
 			pass
 		elif recv_msg == "ack":
+			result_received = True
 			print("successfully put data in server's kv_store")
 			pass
 		elif recv_msg == "election successful": #todo: change this to what's sent when new leader is determined
-			if (message_to_send[:message_to_send.find(',')] == "get"):
+			if result_received:
+				pass
+			elif (message_to_send[message_to_send.find(',')+1:message_to_send.find(',', message_to_send.find(',')+1)] == "get"):#todo change this
 				send_get_request(message)
-			elif (message_to_send[:message_to_send.find(',')] == "put"):
+			elif (message_to_send[message_to_send.find(',')+1:message_to_send.find(',', message_to_send.find(',')+1)] == "put"):
 				send_put_request(message)
 			else:
 				print("message_to_send is not a get or put request")
 			pass
 		else:
+			result_received = True
 			value_dict = pickle.loads(recv_msg.encode('latin1'))
 			print("received dict from server: ", value_dict)
 			pass
 
 def send_get_request(message):
-	global response_received
+	global result_received
+	result_received = False
 	message = message.replace(' ', ',')
 	print("sending get request: ", message)
 	#message = "get " + key
@@ -114,7 +121,8 @@ def send_get_request(message):
 
 
 def send_put_request(message):
-	global response_received
+	global result_received
+	result_received = False
 	#print("sending put request: key:", key, ", value: ", value)
 	message = message.replace(' ', ',')
 	print("sending put request: ", message)
@@ -199,6 +207,7 @@ server5 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 current_server = server1
 response_received = False
 message_to_send = ""
+result_received = False
 
 threading.Thread(target=cmd_input).start()
 
