@@ -282,7 +282,7 @@ def send_promise(current_index, current_num, current_pid, client, old_index, old
     leader = get_correct_server(proposer_pid)
 
     block_serialized = pickle.dumps(accepted_block)
-    message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(client) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + block_serialized.decode('latin1')
+    message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(client) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + block_serialized.decode('latin1') + "," + str(unique_id)
     #TODO: change block to serialized string thing
     #what if accepted_block is none?
     message = message.encode()
@@ -840,7 +840,7 @@ def read_blockchain_from_file(filename):
         if line[:line.find(':')] != "unique_id":
             print("error with parsing unique_id")
         block[0] = line[line.find(':')+1:]
-        
+
         line = f.readline().rstrip('\n')
         if not line:
             break
