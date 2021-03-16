@@ -7,6 +7,7 @@ import time
 import threading
 import string
 import random
+import pickle
 
 
 def connect():
@@ -31,7 +32,6 @@ def cmd_input():
 
 			#if input is send, send a message to a server
 			elif inp[0:4] == 'send':
-				which_server = inp[5:12]
 				operation = inp[13:inp.find(' ', 13)]
 				response_received = False
 				unique_id = generate_unique_id()
@@ -40,6 +40,8 @@ def cmd_input():
 					send_leader_request()
 				#print("sending message: " + message + ", from client " + str(process_id) + " to " + which_server)
 				elif operation == 'get':
+					which_server = inp[5:12]
+					change_current_server(int(which_server[-1]))
 					message = inp[13:]
 					message = "client" + str(process_id) + " " + message
 					message = message + " " + unique_id
@@ -47,6 +49,8 @@ def cmd_input():
 					time.sleep(5)
 					send_get_request(message)
 				elif operation == 'put':
+					which_server = inp[5:12]
+					change_current_server(int(which_server[-1]))
 					message = inp[13:]
 					message = "client" + str(process_id) + " " + message
 					message = message + " " + unique_id
@@ -71,31 +75,32 @@ def cmd_input():
 
 def listen_on_port(stream, addr):
 	global response_received
-	print("listening on port")
-	recv_msg_bytes = stream.recv(1024)
-	print("received message")
-	if not recv_msg_bytes:
-		return
-	response_received = True
-	recv_msg = recv_msg_bytes.decode()
-	if recv_msg == "NO_KEY":
-		print("no key in server's kv_store")
-		return
-	elif recv_msg == "ack":
-		print("successfully put data in server's kv_store")
-		return
-	elif recv_msg == "ok": #todo: change this to what's sent when new leader is determined
-		if (message_to_send[:message_to_send.find(',')] == "get"):
-			send_get_request(message)
-		elif (message_to_send[:message_to_send.find(',')] == "put"):
-			send_put_request(message)
+	while True:
+		print("listening on port")
+		recv_msg_bytes = stream.recv(1024)
+		print("received message")
+		if not recv_msg_bytes:
+			return
+		response_received = True
+		recv_msg = recv_msg_bytes.decode()
+		if recv_msg == "NO_KEY":
+			print("no key in server's kv_store")
+			pass
+		elif recv_msg == "ack":
+			print("successfully put data in server's kv_store")
+			pass
+		elif recv_msg == "ok": #todo: change this to what's sent when new leader is determined
+			if (message_to_send[:message_to_send.find(',')] == "get"):
+				send_get_request(message)
+			elif (message_to_send[:message_to_send.find(',')] == "put"):
+				send_put_request(message)
+			else:
+				print("message_to_send is not a get or put request")
+			pass
 		else:
-			print("message_to_send is not a get or put request")
-		return
-	else:
-		value_dict = json.loads(recv_msg)
-		print("received dict from server: ", value_dict)
-		return
+			value_dict = pickle.loads(recv_msg.encode('latin1'))
+			print("received dict from server: ", value_dict)
+			pass
 
 def send_get_request(message):
 	global response_received
@@ -144,7 +149,8 @@ def switch_servers():
 
 def check_if_response():
 	global message_to_send
-	time.sleep(40) #todo: change timeout time if needed
+	time.sleep(23) #todo: change timeout time if needed
+	print("checking if responded now")
 	if not response_received:
 		handle_no_response()
 	else:
@@ -160,6 +166,18 @@ def generate_unique_id():
 	unique_id = ''.join(random.choice(letters) for i in range(20))
 	return unique_id
 
+def change_current_server(server):
+	global current_server
+	if server == 1:
+		current_server = server1
+	elif server == 2:
+		current_server = server2
+	elif server == 3:
+		current_server = server3
+	elif server == 4:
+		current_server = server4
+	elif server == 5:
+		current_server = server5
 
 #ask tomorrow if we should expect "connect" input to connect to servers
 process_id = int(sys.argv[1])

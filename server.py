@@ -148,10 +148,11 @@ def cmd_input():
 
 ####TODO: add client to every function until decision as parameter
 def send_proposal(client):
-    print("server",str(process_id)," sending proposal")
-    global current_num
+    global received_promise_counter
 
-    current_num += 1
+    received_promise_counter = 0
+    print("server",str(process_id)," sending proposal")
+
     message = "prepare," + str(current_index) + "," + str(current_num) + "," + str(process_id) + ","+ str(client) #more things to add here for local comparison?
     message = message.encode()
     #broadcast message to all servers
@@ -232,6 +233,7 @@ def receive_promise(received_index, received_num, received_pid, client, old_inde
             if received_promise_counter_dict[uni_id] >= 2:
                 for i in range(len(blockchain)):
                     if uni_id == blockchain[i][0]:
+                        print("got majority promises for block w/ unique id ", uni_id)
                         accepted_block = blockchain[i]
                         current_index = block_ballot_no_dict[accepted_block[0]][0]
                         current_num = block_ballot_no_dict[accepted_block[0]][1]
@@ -257,8 +259,14 @@ def receive_promise(received_index, received_num, received_pid, client, old_inde
 def send_accept():
     print("server",str(process_id)," sending accept")
     global accepted_block
+    global received_accepted_counter
     global received_accepted_counter_dict
     global sent_decision
+    global current_index
+    global current_num
+    global current_pid
+
+    current_num += 1
     sent_decision = False
 
     block_operation = ""
@@ -268,6 +276,7 @@ def send_accept():
 
     block_exists = False
     received_accepted_counter_dict = {}
+    received_accepted_counter = 0
     #print(q.queue[0])
     operation = q.get()
     print ("operation: ", operation)
@@ -277,16 +286,20 @@ def send_accept():
         key = operation.split(',')[2]
         value = operation.split(',')[3] #dictionary
         unique_id = operation.split(',')[4]
+        current_pid = int(operation.split(',')[5][-1])
     elif (operation.split(',')[1] == "get"):
         block_operation = "get"
         key = operation.split(',')[2]
         value = None
         unique_id = operation.split(',')[3]
+        current_pid = int(operation.split(',')[4][-1])
 
     for i in range(len(blockchain)):
         if blockchain[i][0] == unique_id:
             accepted_block = blockchain[i]
             block_exists = True
+
+    current_index = len(blockchain)
 
     if(make_new_block and not block_exists):
         generate_block(unique_id, block_operation, key, value, client_sender)
@@ -299,6 +312,7 @@ def send_accept():
 
     block_serialized = pickle.dumps(accepted_block)
     message = "accept," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + block_serialized.decode('latin1')
+    print(message)
     message = message.encode()
     time.sleep(5)
     server1.sendall(message)
@@ -356,6 +370,10 @@ def receive_accepted(received_index, received_num, received_pid, received_block)
     global sent_decision
     global received_accepted_counter_dict
     global block_ballot_no_dict
+    global current_index
+    global current_num
+    global current_pid
+    global accepted_block
 
     if received_block is not None:
         print(received_block)
@@ -402,7 +420,9 @@ def send_decision(final_index, final_num, final_pid, final_block):
 
     send_message_to_client(final_block[1], final_block) #TODO: needs client as a parameter here, check if final_block should be serialized
     blockchain[-1][-1] = True #todo: find block in blockchain to be set to true
-    current_index = 0 #depth
+    if final_block[2][0] == "put":
+        kv_store[final_block[2][1]] = final_block[2][2]
+    current_index = len(blockchain) #depth
     current_num = 0 #ballot number
     current_pid = 0 #process id
 
@@ -423,16 +443,21 @@ def receive_decision(received_index, received_num, received_pid, received_block)
     pass
 
 def send_message_to_client(client, block):
-    #todo: if get request key does not exist, send "NO_KEY"
     print("server",str(process_id)," sending message to client", str(client))
     client_socket = get_client_socket(client)
+    message_bytes = b''
     if block[2][0] == "put":
         message = "ack"
         message_bytes = message.encode()
         client_socket.sendall(message_bytes)
     elif block[2][0] == "get":
-        value_dict = kv_store[block[0][1]]
-        message_bytes = pickle.dumps(value_dict)
+        if block[2][1] not in kv_store:
+            message = "NO_KEY"
+            message_bytes = message.encode()
+        else:
+            value_dict = kv_store[block[2][1]]
+            print(value_dict)
+            message_bytes = pickle.dumps(value_dict).decode('latin1').encode()
         #message_bytes = message.encode()
         client_socket.sendall(message_bytes)
 
@@ -482,6 +507,9 @@ def server_listen(stream, addr):
         if message.split(',')[1] == "get":
             client_sender = int(message.split(',')[0][-1])
             #from clients
+            if message[len(message)-7:len(message)-1] != "server":
+                message = message + ",server"+str(process_id)
+            print("server",str(process_id)+" received get request. message: ", message)
             if not is_leader:
                 message = message.encode()
                 leader.sendall(message)
@@ -489,6 +517,9 @@ def server_listen(stream, addr):
                 #start proposal
                 q.put(message)
         elif message.split(',')[1] == "put":
+            if message[len(message)-7:len(message)-1] != "server":
+                message = message + ",server"+str(process_id)
+            print("server",str(process_id)+" received put request. message: ", message)
             client_sender = int(message.split(',')[0][-1])
             #from clients
             if not is_leader:
@@ -498,6 +529,7 @@ def server_listen(stream, addr):
                 #start proposal
                 q.put(message)
         elif message.split(',')[1] == "leader":
+            #message = message + ",server"+str(process_id) todo: is this line necessary?
             client_sender = int(message.split(',')[0][-1])
             #from client
             #start leader election as leader aka SEND proposal
@@ -714,14 +746,6 @@ def check_ballot_no(index, num, pid):
     current_pid = pid
     return True
 
-#initialize blockchain with operation and <k,v> but no hash or nonce
-'''blockchain =  [
-                ["unique id", ["get", "a_netid"], "previous block hash", "nonce", boolean(decided)],
-                ["", ["put", "a_netid", {"phone_number":"111-222-3333"}], "", "", False],
-                ["", ["put", "bob_netid", {"phone_number":"333-222-1111"}], "", "", False],
-                ["", ["get", "bob_netid"], "", "", False],
-                ["", ["get", "cat_netid"], "", "", False]
-                ]'''
 
 blockchain = []
 kv_store = {}
