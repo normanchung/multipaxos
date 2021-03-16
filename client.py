@@ -70,7 +70,9 @@ def cmd_input():
 			pass
 
 def listen_on_port(stream, addr):
+	print("listening on port")
 	recv_msg_bytes = stream.recv(1024)
+	print("received message")
 	if not recv_msg_bytes:
 		return
 	response_received = True
