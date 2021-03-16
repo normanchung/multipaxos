@@ -110,6 +110,10 @@ def listen_on_port(stream, addr):
 			else:
 				print("message_to_send is not a get or put request")
 			pass
+		elif msg == "request already processed":
+			received_dict[unique_id] = True
+			result_received = True
+			pass
 		else:
 			result_received = True
 			received_dict[unique_id] = True
@@ -127,7 +131,10 @@ def send_get_request(message):
 	print("sending get request: ", message)
 	#message = "get " + key
 	message_bytes = message.encode()
-	current_server.sendall(message_bytes)
+	try:
+		current_server.sendall(message_bytes)
+	except RuntimeError:
+		current_server.close()
 
 	threading.Thread(target=check_if_response, args=(unique_id,)).start()
 
@@ -145,7 +152,10 @@ def send_put_request(message):
 	print("sending put request: ", message)
 	#message = "put " + key + " " + value
 	message_bytes = message.encode()
-	current_server.sendall(message_bytes)
+	try:
+		current_server.sendall(message_bytes)
+	except RuntimeError:
+		current_server.close()
 
 	threading.Thread(target=check_if_response, args=(unique_id,)).start()
 
@@ -156,7 +166,10 @@ def send_leader_request(unique_id):
 	print("sending leader request")
 	message = "client" + str(process_id) + ",leader,"+unique_id
 	message_bytes = message.encode()
-	current_server.sendall(message_bytes)
+	try:
+		current_server.sendall(message_bytes)
+	except RuntimeError:
+		current_server.close()
 
 	threading.Thread(target=check_if_response, args=(unique_id,)).start()
 
@@ -176,7 +189,7 @@ def switch_servers():
 
 def check_if_response(unique_id):
 	global message_to_send
-	time.sleep(60) #todo: change timeout time if needed
+	time.sleep(20) #todo: change timeout time if needed
 	print("checking if responded now")
 	if not received_dict[unique_id]:
 		handle_no_response()
@@ -184,7 +197,8 @@ def check_if_response(unique_id):
 def handle_no_response():
 	print("no response from current server. switching servers and sending leader request")
 	switch_servers()
-	send_leader_request()
+	unique_id = generate_unique_id()
+	send_leader_request(unique_id)
 
 def generate_unique_id():
 	letters = string.ascii_letters
