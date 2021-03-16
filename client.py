@@ -70,6 +70,7 @@ def cmd_input():
 			pass
 
 def listen_on_port(stream, addr):
+	global response_received
 	print("listening on port")
 	recv_msg_bytes = stream.recv(1024)
 	print("received message")

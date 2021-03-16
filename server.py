@@ -61,24 +61,24 @@ def get_correct_server(dest_server):
     #if current process_id is 3, and destination is 2, you would do a server2 send
     #if current process_id is 3, and destination is 4, you would do a server3 send (subtract 1)
     if (dest_server < process_id):
-        if (dest_server == 'server1'):
+        if (dest_server == 1):
             return server1
-        elif (dest_server == 'server2'):
+        elif (dest_server == 2):
             return server2
-        elif (dest_server == 'server3'):
+        elif (dest_server == 3):
             return server3
-        elif (dest_server == 'server4'):
+        elif (dest_server == 4):
             return server4
-        elif (dest_server == 'server5'):
+        elif (dest_server == 5):
             return server5
     elif (dest_server > process_id):
-        if (dest_server == 'server2'):
+        if (dest_server == 2):
             return server1
-        elif (dest_server == 'server3'):
+        elif (dest_server == 3):
             return server2
-        elif (dest_server == 'server4'):
+        elif (dest_server == 4):
             return server3
-        elif (dest_server == 'server5'):
+        elif (dest_server == 5):
             return server4
 
 def send_between_servers(dest_server, message):
@@ -102,7 +102,7 @@ def cmd_input():
                 print("broadcasting message: " + message + ", from server " + str(process_id) + " to all servers")
                 message = "server" + str(process_id) + " " + message
                 message = message.encode()
-                time.sleep(5) 
+                time.sleep(5)
                 server1.sendall(message)
                 server2.sendall(message)
                 server3.sendall(message)
@@ -132,11 +132,11 @@ def cmd_input():
                 print_active_networks()
 
             elif inp[:9] == 'fail link':
-                server = get_correct_server(inp[len(inp)-1:])
+                server = get_correct_server(int(inp[len(inp)-1:]))
                 failLink(server)
 
             elif inp[:8] == 'fix link':
-                server = get_correct_server(inp[len(inp)-1:])
+                server = get_correct_server(int(inp[len(inp)-1:]))
                 fixLink(server)
 
             #if input is fail process, close everything
@@ -150,7 +150,7 @@ def cmd_input():
 def send_proposal(client):
     print("server",str(process_id)," sending proposal")
     global current_num
-    
+
     current_num += 1
     message = "prepare," + str(current_index) + "," + str(current_num) + "," + str(process_id) + ","+ str(client) #more things to add here for local comparison?
     message = message.encode()
@@ -172,7 +172,7 @@ def receive_proposal(received_index, received_num, proposer_pid, client):
     old_pid = current_pid
     if(check_ballot_no(received_index, received_num, proposer_pid)):
         send_promise(current_index, current_num, current_pid, client, old_index, old_num, old_pid, proposer_pid)
-    
+
 def send_promise(current_index, current_num, current_pid, client, old_index, old_num, old_pid, proposer_pid):
     print("server",str(process_id)," sending promise")
     global is_leader
@@ -188,7 +188,7 @@ def send_promise(current_index, current_num, current_pid, client, old_index, old
     leader = get_correct_server(proposer_pid)
 
     block_serialized = pickle.dumps(accepted_block)
-    message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + block_serialized.decode('latin1') + "," + str(client)
+    message = "promise," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + str(client) + "," + str(old_index) + "," + str(old_num) + "," + str(old_pid) + "," + block_serialized.decode('latin1')
     #TODO: change block to serialized string thing
     #what if accepted_block is none?
     message = message.encode()
@@ -203,7 +203,7 @@ def receive_promise(received_index, received_num, received_pid, client, old_inde
     #check for if any other message was already accepted, and then start proposing this value
     #Upon receive (“promise”, BallotNum, b, val) from majority
     #if all vals = bottom then myVal = initial value
-    #else myVal = received val with highest b 
+    #else myVal = received val with highest b
     global current_index
     global current_num
     global current_pid
@@ -233,6 +233,9 @@ def receive_promise(received_index, received_num, received_pid, client, old_inde
                 for i in range(len(blockchain)):
                     if uni_id == blockchain[i][0]:
                         accepted_block = blockchain[i]
+                        current_index = block_ballot_no_dict[accepted_block[0]][0]
+                        current_num = block_ballot_no_dict[accepted_block[0]][1]
+                        current_pid = block_ballot_no_dict[accepted_block[0]][2]
 
         if(accepted_block == None): #THIS BOOLEAN OF block_exists DOES NOT WORK
             #current_index = received_index
@@ -243,9 +246,6 @@ def receive_promise(received_index, received_num, received_pid, client, old_inde
             client_sender = client
             make_new_block = True
         else:
-            current_index = block_ballot_no_dict[accepted_block][0]
-            current_num = block_ballot_no_dict[accepted_block][1]
-            current_pid = block_ballot_no_dict[accepted_block][2]
             make_new_block = False
 
         #TODO: make this current server the leader variable
@@ -258,12 +258,14 @@ def send_accept():
     print("server",str(process_id)," sending accept")
     global accepted_block
     global received_accepted_counter_dict
+    global sent_decision
+    sent_decision = False
 
     block_operation = ""
     key = ""
     value = {}
     unique_id = ""
-    
+
     block_exists = False
     received_accepted_counter_dict = {}
     #print(q.queue[0])
@@ -318,7 +320,7 @@ def receive_accept(received_index, received_num, received_pid, received_block):
 
     if (check_ballot_no(received_index, received_num, received_pid)):
         accepted_block = received_block
-
+        unique_id = accepted_block[0]
         block_exists = False
 
         for i in range(len(blockchain)):
@@ -327,22 +329,20 @@ def receive_accept(received_index, received_num, received_pid, received_block):
         if not block_exists:
             blockchain.append(accepted_block) #TODO CHANGE THIS TO SEND TO GENERATE_BLOCK
         send_accepted(current_index, current_num, current_pid, accepted_block)
-  
+
 def send_accepted(current_index, current_num, current_pid, accepted_block):
     print("server",str(process_id)," sending accepted")
     #once this is sent the values are locked and will be decided upon given a majority
     #use a boolean so that future messages won't interrupt this process?
     global received_accepted_counter
-    global sent_decision
 
     if accepted_block is not None:
         print(accepted_block)
     else:
         print("accepted block is none")
-        
+
 
     received_accepted_counter = 0
-    sent_decision = False
 
     block_serialized = pickle.dumps(accepted_block)
     message = "accepted," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + block_serialized.decode('latin1')
@@ -361,7 +361,7 @@ def receive_accepted(received_index, received_num, received_pid, received_block)
         print(received_block)
     else:
         print("received block is none")
-        
+
 
     if not sent_decision:
         if received_block is not None:
@@ -386,7 +386,7 @@ def receive_accepted(received_index, received_num, received_pid, received_block)
         if (received_accepted_counter >= 2):
             sent_decision = True
             send_decision(current_index, current_num, current_pid, accepted_block)
-    
+
 def send_decision(final_index, final_num, final_pid, final_block):
     print("server",str(process_id)," sending decision")
     #broadcast final decision value to all servers, add to blockchain
@@ -402,6 +402,11 @@ def send_decision(final_index, final_num, final_pid, final_block):
 
     send_message_to_client(final_block[1], final_block) #TODO: needs client as a parameter here, check if final_block should be serialized
     blockchain[-1][-1] = True #todo: find block in blockchain to be set to true
+    current_index = 0 #depth
+    current_num = 0 #ballot number
+    current_pid = 0 #process id
+
+    accepted_block = None #accepted block
 
 def receive_decision(received_index, received_num, received_pid, received_block):
     print("server",str(process_id)," receiving decision")
@@ -409,6 +414,12 @@ def receive_decision(received_index, received_num, received_pid, received_block)
     if received_block == blockchain[-1]:
         blockchain[-1][-1] = True
         #todo: write blockchain to file?
+        current_index = 0 #depth
+        current_num = 0 #ballot number
+        current_pid = 0 #process id
+
+        accepted_block = None #accepted block
+
     pass
 
 def send_message_to_client(client, block):
@@ -436,7 +447,7 @@ def get_client_socket(client):
         return client3
     else:
         print("no correct client found for ", client)
-  
+
 def check_ballot_no(index, num, pid): ############TODO: check if value is None
     print("server",str(process_id)," checking ballot no")
     global current_index
@@ -457,7 +468,7 @@ def check_ballot_no(index, num, pid): ############TODO: check if value is None
 def start_send():
   while True:
     if not q.empty():
-        send_accept()  
+        send_accept()
 
 def server_listen(stream, addr):
     while True:
@@ -490,7 +501,7 @@ def server_listen(stream, addr):
             client_sender = int(message.split(',')[0][-1])
             #from client
             #start leader election as leader aka SEND proposal
-            send_proposal()
+            send_proposal(client_sender)
         elif message.split(',')[0] == "prepare":
             #from leader
             received_index = int(message.split(',')[1])
@@ -565,7 +576,7 @@ def generate_block(unique_id, current_operation, key, value, client):
     if value is not None:
         block_op.append(value) #TODO add pickle.loads for value dictionary
     blockchain.append([unique_id, client, block_op, current_hash, nonce, False])
-        
+
 
 def write_blockchain_to_file(filename):
     f = open(filename, "w")
@@ -631,7 +642,7 @@ def read_blockchain_from_file(filename):
             print("error with parsing nonce")
         block[2] = line[line.find(':')+1:]
         blockchain.append(block)
-        
+
 def generate_kv_store():
     global kv_store
     for i in range(len(blockchain)):
