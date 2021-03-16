@@ -184,7 +184,8 @@ def check_if_response(unique_id):
 def handle_no_response():
 	print("no response from current server. switching servers and sending leader request")
 	switch_servers()
-	send_leader_request()
+	unique_id = generate_unique_id()
+	send_leader_request(unique_id)
 
 def generate_unique_id():
 	letters = string.ascii_letters
