@@ -46,7 +46,7 @@ def connect():
 
     client1.connect((socket.gethostname(), data["client1"]))
     client2.connect((socket.gethostname(), data["client2"]))
-    #client3.connect((socket.gethostname(), data["client3"]))
+    client3.connect((socket.gethostname(), data["client3"]))
 
     active_networks[server1] = True
     active_networks[server2] = True
@@ -164,7 +164,9 @@ def send_server_election_successful():
 ####TODO: add client to every function until decision as parameter
 def send_proposal(client):
     global received_promise_counter
+    global sent_accept
 
+    sent_accept = False
     received_promise_counter = 0
     print("server",str(process_id)," sending proposal")
 
@@ -195,11 +197,9 @@ def send_promise(current_index, current_num, current_pid, client, old_index, old
     global leader
     global received_promise_counter
     global received_promise_counter_dict
-    global sent_accept
 
     received_promise_counter = 0
     received_promise_counter_dict = {}
-    sent_accept = False
     is_leader = False
     leader = get_correct_server(proposer_pid)
 
@@ -320,8 +320,10 @@ def send_accept():
     if(make_new_block and not block_exists):
         generate_block(unique_id, block_operation, key, value, client_sender)
         accepted_block = blockchain[-1]
+        add_block_to_file(accepted_block)
     elif not block_exists:
         blockchain.append(accepted_block)
+        add_block_to_file(accepted_block)
     else:
         pass
         #TODO: doesn't this mean that the block has already been added, and should just return to client right away with an ack or a key value?
@@ -359,6 +361,7 @@ def receive_accept(received_index, received_num, received_pid, received_block):
                 block_exists = True
         if not block_exists:
             blockchain.append(accepted_block) #TODO CHANGE THIS TO SEND TO GENERATE_BLOCK
+            add_block_to_file(accepted_block)
         send_accepted(current_index, current_num, current_pid, accepted_block)
 
 def send_accepted(current_index, current_num, current_pid, accepted_block):
@@ -438,7 +441,10 @@ def send_decision(final_index, final_num, final_pid, final_block):
         server4.sendall(message)
 
         send_message_to_client(final_block[1], final_block) #TODO: needs client as a parameter here, check if final_block should be serialized
-        blockchain[-1][-1] = True #todo: find block in blockchain to be set to true
+        for i in range(len(blockchain)):
+            if blockchain[i][0] == final_block[0]:
+                blockchain[i][-1] = True
+
         if final_block[2][0] == "put":
             kv_store[final_block[2][1]] = final_block[2][2]
         current_index = len(blockchain) #depth
@@ -450,17 +456,22 @@ def send_decision(final_index, final_num, final_pid, final_block):
 
 def receive_decision(received_index, received_num, received_pid, received_block):
     print("server",str(process_id)," receiving decision")
-    #todo: need to change this to find the block in blockchain instead of changing last block's decision to true
-    if received_block == blockchain[-1]:
-        blockchain[-1][-1] = True
-        #todo: write blockchain to file?
-        current_index = 0 #depth
-        current_num = 0 #ballot number
-        current_pid = 0 #process id
 
-        accepted_block = None #accepted block
+    current_index = len(blockchain) #depth
+    current_num = 0 #ballot number
+    current_pid = 0 #process id
+    accepted_block = None #accepted block
 
-    pass
+    block_in_blockchain = False
+    for i in range(len(blockchain)):
+        if blockchain[i][0] == received_block[0]:
+            block_in_blockchain = True
+            blockchain[i][-1] = True
+    if not block_in_blockchain:
+        received_block[-1] = True
+        blockchain.append(received_block)
+    if received_block[2][0] == "put":
+        kv_store[received_block[2][1]] = received_block[2][2]
 
 def send_message_to_client(client, block):
     print("server",str(process_id)," sending message to client", str(client))
@@ -578,7 +589,7 @@ def server_listen(stream, addr):
             old_num = int(message.split(',')[5])
             old_pid = int(message.split(',')[6])
             proposer_pid = int(message.split(',')[7])
-            received_block = pickle.loads(message.split(',')[8].encode('latin1')) #TODO CHANGE ALL RECEIVED BLOCKS TO NOT CAST TO INT, BUT TO THE SERIALIZE THING
+            received_block = pickle.loads(message.split(',')[8].encode('latin1'))
             #operation = int(message.split(',')[8])
             receive_promise(received_index, received_num, received_pid, received_client, old_index, old_num, old_pid, received_block)
         elif message.split(',')[0] == "accepted":
@@ -605,7 +616,7 @@ def server_listen(stream, addr):
         elif message.split(',')[0] == "elected":
             print("received elected message: ", message)
             is_leader = False
-            received_server = int(message.split(',')[1][-1])
+            received_server = int(message[-1])
             leader = get_correct_server(received_server)
 
 
@@ -638,21 +649,40 @@ def generate_block(unique_id, current_operation, key, value, client):
 
     block_op = [current_operation, key]
     if value is not None:
-        block_op.append(value) #TODO add pickle.loads for value dictionary
+        value_dict = json.loads(value)
+        block_op.append(value_dict) #TODO add pickle.loads for value dictionary
     blockchain.append([unique_id, client, block_op, current_hash, nonce, False])
 
+def add_block_to_file(block):
+    f = open(filename, "a")
+    f.write("unique_id:" + block[0]+"\n")
+    f.write("client:" + str(block[1])+"\n")
+    f.write("operation:" + block[2][0]+"\n")
+    f.write("key:" + block[2][1]+"\n")
+    if len(block[2]) > 2:
+        for key, value in block[2][2].items():
+            f.write("value_k:" + key +"\n")
+            f.write("value_v:" + value +"\n")
+    f.write("hash:" + block[3]+"\n")
+    f.write("nonce:" + block[4]+"\n")
+    f.write("decided:" + str(block[5])+"\n")
+    f.close()
 
-def write_blockchain_to_file(filename):
+def write_blockchain_to_file():
     f = open(filename, "w")
     for i in range(len(blockchain)):
-        f.write("operation:" + blockchain[i][1][0]+"\n")
-        f.write("key:" + blockchain[i][1][1]+"\n")
-        if len(blockchain[i][1]) > 2:
-            for key, value in blockchain[i][1][2].items():
+        f = open(filename, "a")
+        f.write("unique_id:" + blockchain[i][0]+"\n")
+        f.write("client:" + blockchain[i][1]+"\n")
+        f.write("operation:" + blockchain[i][2][0]+"\n")
+        f.write("key:" + blockchain[i][2][1]+"\n")
+        if len(block[2]) > 2:
+            for key, value in blockchain[i][2][2].items():
                 f.write("value_k:" + key +"\n")
                 f.write("value_v:" + value +"\n")
-        f.write("hash:" + blockchain[i][2]+"\n")
-        f.write("nonce:" + blockchain[i][3]+"\n")
+        f.write("hash:" + blockchain[i][3]+"\n")
+        f.write("nonce:" + blockchain[i][4]+"\n")
+        f.write("decided:" + blockchain[i][5]+"\n")
     f.close()
 
 def read_blockchain_from_file(filename):
@@ -660,20 +690,35 @@ def read_blockchain_from_file(filename):
     blockchain = []
     f = open(filename, "r")
     while True:
-        block = [[], "", ""]
+        block = ["", 0,[], "", "", False]
+
+        line = f.readline().rstrip('\n')
+        if not line:
+            break
+        if line[:line.find(':')] != "unique_id":
+            print("error with parsing unique_id")
+        block[0] = line[line.find(':')+1:]
+        
+        line = f.readline().rstrip('\n')
+        if not line:
+            break
+        if line[:line.find(':')] != "client":
+            print("error with parsing client")
+        block[1] = int(line[line.find(':')+1:])
+
         line = f.readline().rstrip('\n')
         if not line:
             break
         if line[:line.find(':')] != "operation":
             print("error with parsing operation")
-        block[0].append(line[line.find(':')+1:])
+        block[2].append(line[line.find(':')+1:])
 
         line = f.readline().rstrip('\n')
         if not line:
             break
         if line[:line.find(':')] != "key":
             print("error with parsing key")
-        block[0].append(line[line.find(':')+1:])
+        block[2].append(line[line.find(':')+1:])
 
         l = f.tell()
         line = f.readline().rstrip('\n')
@@ -690,31 +735,42 @@ def read_blockchain_from_file(filename):
             if line[:line.find(':')] == "value_v":
                 value = line[line.find(':')+1:]
             kv = {key : value}
-            block[0].append(kv)
+            block[2].append(kv)
 
         line = f.readline().rstrip('\n')
         if not line:
             break
         if line[:line.find(':')] != "hash":
             print("error with parsing hash")
-        block[1] = line[line.find(':')+1:]
+        block[3] = line[line.find(':')+1:]
 
         line = f.readline().rstrip('\n')
         if not line:
             break
         if line[:line.find(':')] != "nonce":
             print("error with parsing nonce")
-        block[2] = line[line.find(':')+1:]
+        block[4] = line[line.find(':')+1:]
+
+        line = f.readline().rstrip('\n')
+        if not line:
+            break
+        if line[:line.find(':')] != "decided":
+            print("error with parsing decided")
+        if (line[line.find(':')+1:] == "True"):
+            block[5] = True
+        elif (line[line.find(':')+1:] == "False"):
+            block[5] = False
+
         blockchain.append(block)
 
 def generate_kv_store():
     global kv_store
     for i in range(len(blockchain)):
         val = {}
-        if blockchain[i][1][0] == "put":
-            for key, value in blockchain[i][1][2].items():
+        if blockchain[i][2][0] == "put":
+            for key, value in blockchain[i][2][2].items():
                 val[key] = value
-            kv_store[blockchain[i][1][1]] = val
+            kv_store[blockchain[i][2][1]] = val
 
 def recover_data():
     read_blockchain_from_file()
@@ -754,7 +810,6 @@ def failProcess():
     server4.close()
 
     #store blockchain data into file
-    filename = "data_server"+str(process_id)+".txt"
     write_blockchain_to_file(filename)
 
     os._exit(0)
@@ -804,6 +859,7 @@ accepted_block = None #accepted block
 make_new_block = True
 
 process_id = int(sys.argv[1])
+filename = "data_server"+str(process_id)+".txt"
 
 file = open('config.json')
 data = json.load(file)
