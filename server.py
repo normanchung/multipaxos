@@ -166,9 +166,9 @@ def cmd_input():
         except EOFError:
             pass
 
-def send_client_election_successful(client):
+def send_client_election_successful(client, unique_id):
     client_socket = get_client_socket(client)
-    message = "election successful"
+    message = "election successful" + "," + str(unique_id)
     message = message.encode()
     client_socket.sendall(message)
 
@@ -180,24 +180,28 @@ def send_server_election_successful():
             server1.sendall(message)
         except RuntimeError:
             active_networks[server1] = False
+            print("hi")
             server1.close()
     if active_networks[server2]:
         try:
             server2.sendall(message)
         except RuntimeError:
             active_networks[server2] = False
+            print("hi")
             server2.close()
     if active_networks[server3]:
         try:
             server3.sendall(message)
         except RuntimeError:
             active_networks[server3] = False
+            print("hi")
             server3.close()
     if active_networks[server4]:
         try:
             server4.sendall(message)
         except RuntimeError:
             active_networks[server4] = False
+            print("hi")
             server4.close()
 
 
@@ -219,24 +223,28 @@ def send_proposal(client, unique_id):
             server1.sendall(message)
         except RuntimeError:
             active_networks[server1] = False
+            print("hi")
             server1.close()
     if active_networks[server2]:
         try:
             server2.sendall(message)
         except RuntimeError:
             active_networks[server2] = False
+            print("hi")
             server2.close()
     if active_networks[server3]:
         try:
             server3.sendall(message)
         except RuntimeError:
             active_networks[server3] = False
+            print("hi")
             server3.close()
     if active_networks[server4]:
         try:
             server4.sendall(message)
         except RuntimeError:
             active_networks[server4] = False
+            print("hi")
             server4.close()
 
 def receive_proposal(received_index, received_num, proposer_pid, client, unique_id):
@@ -517,6 +525,13 @@ def receive_accepted(received_index, received_num, received_pid, received_block)
 
 def send_decision(final_index, final_num, final_pid, final_block):
     global currently_sending
+    global current_index
+    global current_num
+    global current_pid
+    global accepted_block
+    global blockchain
+    global kvstore
+
     if(is_leader):
         print("server",str(process_id)," sending decision")
         #broadcast final decision value to all servers, add to blockchain
@@ -565,6 +580,14 @@ def send_decision(final_index, final_num, final_pid, final_block):
         currently_sending = False
 
 def receive_decision(received_index, received_num, received_pid, received_block):
+    global currently_sending
+    global current_index
+    global current_num
+    global current_pid
+    global accepted_block
+    global blockchain
+    global kvstore
+
     print("server",str(process_id)," receiving decision")
 
     current_index = len(blockchain) #depth
@@ -598,8 +621,8 @@ def send_message_to_client(client, block):
         else:
             value_dict = kv_store[block[2][1]]
             print(value_dict)
-            message_bytes = pickle.dumps(value_dict).decode('latin1').encode()+","+block[0]
-        #message_bytes = message.encode()
+            message_bytes = pickle.dumps(value_dict).decode('latin1') + "," + block[0]
+            message_bytes = message_bytes.encode()
         client_socket.sendall(message_bytes)
 
 
@@ -624,7 +647,7 @@ def check_ballot_no(index, num, pid): ############TODO: check if value is None
         return False
     elif num < current_num:
         return False
-    elif pid < current_id:
+    elif pid < current_pid:
         return False
     current_index = index
     current_num = num
@@ -796,7 +819,7 @@ def write_blockchain_to_file():
     for i in range(len(blockchain)):
         f = open(filename, "a")
         f.write("unique_id:" + blockchain[i][0]+"\n")
-        f.write("client:" + blockchain[i][1]+"\n")
+        f.write("client:" + str(blockchain[i][1])+"\n")
         f.write("operation:" + blockchain[i][2][0]+"\n")
         f.write("key:" + blockchain[i][2][1]+"\n")
         if len(block[2]) > 2:
@@ -915,14 +938,17 @@ def print_active_networks():
 def failLink(dest_sock):
     if dest_sock in active_networks:
         active_networks[dest_sock] = False
+        print(active_networks)
         return
     print("failLink() error: no connection found")
 
 def fixLink(dest_sock):
     if dest_sock in active_networks:
         active_networks[dest_sock] = True
+        print(active_networks)
         return
     print("fixLink() error: no connection found")
+
 
 def failProcess():
     print("closing all connections...")
@@ -931,9 +957,6 @@ def failProcess():
     server2.close()
     server3.close()
     server4.close()
-
-    #store blockchain data into file
-    write_blockchain_to_file(filename)
 
     os._exit(0)
 
@@ -949,7 +972,7 @@ def check_ballot_no(index, num, pid):
         return False
     elif num < current_num:
         return False
-    elif pid < current_id:
+    elif pid < current_pid:
         return False
     current_index = index
     current_num = num
