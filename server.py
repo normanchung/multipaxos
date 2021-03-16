@@ -430,7 +430,7 @@ def send_accepted(current_index, current_num, current_pid, accepted_block):
     message = "accepted," + str(current_index) + "," + str(current_num) + "," + str(current_pid) + "," + block_serialized.decode('latin1')
     message = message.encode()
     time.sleep(5)
-    if active_networks[leader]:
+    if not is_leader and active_networks[leader]:
         try:
             print("server",str(process_id)," sending accepted to leader")
             leader.sendall(message)
@@ -496,6 +496,7 @@ def send_decision(final_index, final_num, final_pid, final_block):
             except RuntimeError:
                 active_networks[server1] = False
                 server1.close()
+        time.sleep(5)
         if active_networks[server2]:
             try:
                 print("server",str(process_id)," sending decision to server" + str(get_correct_server_int(2)))
@@ -784,10 +785,10 @@ def generate_block(unique_id, current_operation, key, value, client):
         operation_nonce = (current_operation+nonce).encode()
         h = hashlib.sha256(operation_nonce).hexdigest()
 
-    #print("\n")
-    #print("hash for previous ptr in blockchain: ", current_hash)
-    #print("nonce: ", nonce)
-    #print("hashes generated with nonce that should end in 0 to 2: ", h)
+    print("\n")
+    print("hash for previous ptr in blockchain: ", current_hash)
+    print("nonce: ", nonce)
+    print("hashes generated with nonce that should end in 0 to 2: ", h)
 
     block_op = [current_operation, key]
     if value is not None:
