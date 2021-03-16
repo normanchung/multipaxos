@@ -45,7 +45,7 @@ def connect():
         server4.connect((socket.gethostname(), data["server4"]))
 
     client1.connect((socket.gethostname(), data["client1"]))
-    #client2.connect((socket.gethostname(), data["client2"]))
+    client2.connect((socket.gethostname(), data["client2"]))
     #client3.connect((socket.gethostname(), data["client3"]))
 
     active_networks[server1] = True
@@ -145,6 +145,21 @@ def cmd_input():
 
         except EOFError:
             pass
+
+def send_client_election_successful(client):
+    client_socket = get_client_socket(client)
+    message = "election successful"
+    message = message.encode()
+    client_socket.sendall(message)
+
+def send_server_election_successful():
+    message = "elected,server" + str(process_id)
+    message = message.encode()
+    server1.sendall(message)
+    server2.sendall(message)
+    server3.sendall(message)
+    server4.sendall(message)
+
 
 ####TODO: add client to every function until decision as parameter
 def send_proposal(client):
@@ -254,8 +269,8 @@ def receive_promise(received_index, received_num, received_pid, client, old_inde
         if (received_promise_counter >= 2):
             is_leader = True
             sent_accept = True
-            send_accept() #TODO: check if i should send to accept or send ack to client then wait for request
-
+            send_client_election_successful(client) #TODO: check if i should send to accept or send ack to client then wait for request
+            send_server_election_successful()
 def send_accept():
     print("server",str(process_id)," sending accept")
     global accepted_block
@@ -265,10 +280,11 @@ def send_accept():
     global current_index
     global current_num
     global current_pid
+    global currently_sending
 
     current_num += 1
     sent_decision = False
-
+    currently_sending = True
     block_operation = ""
     key = ""
     value = {}
@@ -328,7 +344,8 @@ def receive_accept(received_index, received_num, received_pid, received_block):
     #check if received ballot number is greater than current
     #if yes, change accept_num to received ballot_no, accept_block to my_block
     if received_block is not None:
-        print(received_block)
+        #print(received_block)
+        pass
     else:
         print("received block is none")
 
@@ -406,27 +423,30 @@ def receive_accepted(received_index, received_num, received_pid, received_block)
             send_decision(current_index, current_num, current_pid, accepted_block)
 
 def send_decision(final_index, final_num, final_pid, final_block):
-    print("server",str(process_id)," sending decision")
-    #broadcast final decision value to all servers, add to blockchain
-    block_serialized = pickle.dumps(final_block)
-    message = "decide," + str(final_index) + "," + str(final_num) + "," + str(final_pid) + "," + block_serialized.decode('latin1')
-    message = message.encode()
-    #broadcast to all servers
-    time.sleep(5)
-    server1.sendall(message)
-    server2.sendall(message)
-    server3.sendall(message)
-    server4.sendall(message)
+    global currently_sending
+    if(is_leader):
+        print("server",str(process_id)," sending decision")
+        #broadcast final decision value to all servers, add to blockchain
+        block_serialized = pickle.dumps(final_block)
+        message = "decide," + str(final_index) + "," + str(final_num) + "," + str(final_pid) + "," + block_serialized.decode('latin1')
+        message = message.encode()
+        #broadcast to all servers
+        time.sleep(5)
+        server1.sendall(message)
+        server2.sendall(message)
+        server3.sendall(message)
+        server4.sendall(message)
 
-    send_message_to_client(final_block[1], final_block) #TODO: needs client as a parameter here, check if final_block should be serialized
-    blockchain[-1][-1] = True #todo: find block in blockchain to be set to true
-    if final_block[2][0] == "put":
-        kv_store[final_block[2][1]] = final_block[2][2]
-    current_index = len(blockchain) #depth
-    current_num = 0 #ballot number
-    current_pid = 0 #process id
+        send_message_to_client(final_block[1], final_block) #TODO: needs client as a parameter here, check if final_block should be serialized
+        blockchain[-1][-1] = True #todo: find block in blockchain to be set to true
+        if final_block[2][0] == "put":
+            kv_store[final_block[2][1]] = final_block[2][2]
+        current_index = len(blockchain) #depth
+        current_num = 0 #ballot number
+        current_pid = 0 #process id
 
-    accepted_block = None #accepted block
+        accepted_block = None #accepted block
+        currently_sending = False
 
 def receive_decision(received_index, received_num, received_pid, received_block):
     print("server",str(process_id)," receiving decision")
@@ -492,10 +512,13 @@ def check_ballot_no(index, num, pid): ############TODO: check if value is None
 
 def start_send():
   while True:
-    if not q.empty():
+    if not q.empty() and not currently_sending and is_leader:
         send_accept()
 
 def server_listen(stream, addr):
+    global is_leader
+    global leader
+
     while True:
         #listen for a request from other clients
         message = stream.recv(1024)
@@ -576,6 +599,11 @@ def server_listen(stream, addr):
             received_pid = int(message.split(',')[3])
             received_block = pickle.loads(message.split(',')[4].encode('latin1'))
             receive_decision(received_index, received_num, received_pid, received_block)
+        elif message.split(',')[0] == "elected":
+            is_leader = False
+            received_server = int(message.split(',')[1][-1])
+            leader = get_correct_server(received_server)
+
 
         #send received message from client
         #print("message: " + message + ", received from " + sender)
@@ -599,10 +627,10 @@ def generate_block(unique_id, current_operation, key, value, client):
         operation_nonce = (current_operation+nonce).encode()
         h = hashlib.sha256(operation_nonce).hexdigest()
 
-    print("\n")
-    print("hash for previous ptr in blockchain: ", current_hash)
-    print("nonce: ", nonce)
-    print("hashes generated with nonce that should end in 0 to 2: ", h)
+    #print("\n")
+    #print("hash for previous ptr in blockchain: ", current_hash)
+    #print("nonce: ", nonce)
+    #print("hashes generated with nonce that should end in 0 to 2: ", h)
 
     block_op = [current_operation, key]
     if value is not None:
@@ -761,6 +789,7 @@ block_ballot_no_dict = {}
 sent_accept = False
 sent_decision = False
 client_sender = 0
+currently_sending = False
 
 #for ballot_no comparing
 current_index = 0 #depth

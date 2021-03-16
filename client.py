@@ -89,7 +89,7 @@ def listen_on_port(stream, addr):
 		elif recv_msg == "ack":
 			print("successfully put data in server's kv_store")
 			pass
-		elif recv_msg == "ok": #todo: change this to what's sent when new leader is determined
+		elif recv_msg == "election successful": #todo: change this to what's sent when new leader is determined
 			if (message_to_send[:message_to_send.find(',')] == "get"):
 				send_get_request(message)
 			elif (message_to_send[:message_to_send.find(',')] == "put"):
