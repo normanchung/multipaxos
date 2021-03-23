@@ -1,13 +1,13 @@
 import errno
 import json
 import os
-import socket
-import sys
-import time
-import threading
-import string
-import random
 import pickle
+import random
+import socket
+import string
+import sys
+import threading
+import time
 
 
 def connect():
@@ -17,6 +17,8 @@ def connect():
 	server3.connect((socket.gethostname(), data["server3"]))
 	server4.connect((socket.gethostname(), data["server4"]))
 	server5.connect((socket.gethostname(), data["server5"]))
+	server6.connect((socket.gethostname(), data["server5"]))
+	server7.connect((socket.gethostname(), data["server5"]))
 	print("connected to servers!")
 
 def cmd_input():
@@ -71,6 +73,8 @@ def cmd_input():
 				server3.close()
 				server4.close()
 				server5.close()
+				server6.close()
+				server7.close()
 				os._exit(0)
 		except EOFError:
 			pass
@@ -81,7 +85,7 @@ def listen_on_port(stream, addr):
 	while True:
 		print("listening on port")
 		recv_msg_bytes = stream.recv(1024)
-		print("received message: ", recv_msg_bytes.decode())
+		#print("received message: ", recv_msg_bytes.decode())
 		if not recv_msg_bytes:
 			pass
 		response_received = True
@@ -188,11 +192,15 @@ def switch_servers():
 	elif current_server == server4:
 		current_server = server5
 	elif current_server == server5:
+		current_server = server6
+	elif current_server == server6:
+		current_server = server7
+	elif current_server == server7:
 		current_server = server1
 
 def check_if_response(unique_id):
 	global message_to_send
-	time.sleep(20) #todo: change timeout time if needed
+	time.sleep(45) #todo: change timeout time if needed
 	print("checking if responded now")
 	if not received_dict[unique_id]:
 		handle_no_response()
@@ -220,6 +228,10 @@ def change_current_server(server):
 		current_server = server4
 	elif server == 5:
 		current_server = server5
+	elif server == 6:
+		current_server = server6
+	elif server == 7:
+		current_server = server7
 
 #ask tomorrow if we should expect "connect" input to connect to servers
 process_id = int(sys.argv[1])
@@ -237,6 +249,8 @@ server2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server3 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server4 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server5 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server6 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server7 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 current_server = server1
 response_received = False
